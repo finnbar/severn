@@ -34,20 +34,4 @@ transform (Loop (a :>>>: f)) = case f of
     nc :***: nc' -> transform $ Loop $ WithoutComp (Id :***: nc') `comp` a `comp` WithoutComp (nc :***: Id)
     -- Product rule then success. (2)
     Pre (i,j) -> LoopPre j (a :>>>: (Pre i :***: Id))
-    x -> _ -- TODO: squash / reverse squash
-
-{-
-rotateUntilPre :: NoLoop (a,c) (b,c) -> (c, NoLoop (a,c) (b,c))
--- Success condition
-rotateUntilPre (a :>>>: (b :***: (Pre i)))
-    = (i, a :>>>: (b :***: WithoutPar (Arr id)))
--- Use product rule pre i *** pre j = pre (i,j)
-rotateUntilPre (a :>>>: Pre (i,j))
-    = (j, a :>>>: (WithoutPar (Pre i) :***: WithoutPar (Arr id)))
--- Use sliding to move Arr
--- TODO: This errors because the type changes - may have to reconsider slightly.
--- Answer is likely to change this so it is still enclosed in Loop.
--- Also maybe some helpers would make this less awful.
-rotateUntilPre (a :>>>: (b :***: Arr f))
-    = rotateUntilPre (WithoutComp (WithoutPar (Arr id) :***: WithoutPar (Arr f)) `comp` a :>>>: (b :***: WithoutPar (Arr id)))
--}
+    x -> undefined -- TODO: squash / reverse squash

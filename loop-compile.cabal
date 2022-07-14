@@ -29,6 +29,7 @@ library
       ArrowNF
       CCA
       Helpers
+      NF
       Transform
   other-modules:
       Paths_loop_compile
