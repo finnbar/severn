@@ -31,7 +31,7 @@ transform (Loop (a :>>>: f)) = case f of
     -- Use right sliding (loop (a >>> (b *** c)) = loop ((id *** c) >>> a >>> (b *** id)))
     -- NOTE: will need some kind of squishing rule maybe to deal with b *** id
     -- (e.g. if we have a *** b >>> c *** id, we can have a *** id >>> c *** b, and c *** b might fit Pre rule)
-    nc :***: nc' -> transform $ Loop $ WithoutComp (Id :***: nc') `comp` a :>>>: nc :***: Id
+    nc :***: nc' -> transform $ Loop $ WithoutComp (Id :***: nc') `comp` a `comp` WithoutComp (nc :***: Id)
     -- Product rule then success. (2)
     Pre (i,j) -> LoopPre j (a :>>>: (Pre i :***: Id))
     x -> _ -- TODO: squash / reverse squash

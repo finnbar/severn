@@ -17,11 +17,14 @@ data NoLoop a b where
     (:>>>:) :: NoLoop a b -> NoComp b c -> NoLoop a c
     WithoutComp :: NoComp a b -> NoLoop a b
 
-arrNoLoop :: (a -> b) -> NoLoop a b
-arrNoLoop = WithoutComp . Arr
+lift_ :: NoComp a b -> NoLoop a b
+lift_ = WithoutComp
 
-idNoLoop :: NoLoop a a
-idNoLoop = WithoutComp Id
+arr_ :: (a -> b) -> NoLoop a b
+arr_ = WithoutComp . Arr
+
+id_ :: NoLoop a a
+id_ = WithoutComp Id
 
 infixl 3 :***:
 data NoComp a b where
@@ -37,56 +40,67 @@ instance Category ANF where
 composeANF :: ANF b c -> ANF a b -> ANF a c
 composeANF (Loop g) (Loop f) =
     Loop $
-        arrNoLoop cossa `comp`
-        (f `par` arrNoLoop id) `comp`
-        arrNoLoop juggle `comp`
-        (g `par` arrNoLoop id) `comp`
-        arrNoLoop juggle `comp`
-        arrNoLoop assoc
+        arr_ cossa `comp`
+        (f `par` arr_ id) `comp`
+        arr_ juggle `comp`
+        (g `par` arr_ id) `comp`
+        arr_ juggle `comp`
+        arr_ assoc
 composeANF (Loop g) (WithoutLoop f) =
-    Loop $ (f `par` arrNoLoop id) `comp` g
+    Loop $ (f `par` arr_ id) `comp` g
 composeANF (WithoutLoop g) (Loop f) =
-    Loop $ f `comp` (g `par` arrNoLoop id)
+    Loop $ f `comp` (g `par` arr_ id)
 composeANF (WithoutLoop g) (WithoutLoop f) = WithoutLoop $ f `comp` g
 
+-- NOTE: comp and par optimise, so should be preferred over direct calls to :>>>: and :***:.
+-- TODO: I don't think comp transforms:
+-- a *** b >>> c *** id ===> a *** id >>> c *** b
 comp :: NoLoop a b -> NoLoop b c -> NoLoop a c
+-- Optimisation: remove Id
+comp f (WithoutComp Id) = f
+comp (WithoutComp Id) f = f
+-- TODO Normalisation: move Id within pairs inwards
+-- Generally I need to improve my intuition of normal form, I think.
+-- Normal composition:
 comp (WithoutComp f) (WithoutComp g) = WithoutComp f :>>>: g
 comp (f :>>>: g) (WithoutComp h) = f :>>>: g :>>>: h
 comp (WithoutComp f) (g :>>>: h) = comp (WithoutComp f) g :>>>: h
 comp fg (h :>>>: i) = comp fg h :>>>: i
 
 par :: NoLoop a b -> NoLoop a' b' -> NoLoop (a,a') (b,b')
+par (WithoutComp Id) (WithoutComp Id) = WithoutComp Id
 par (WithoutComp f) (WithoutComp g) = WithoutComp $ f :***: g
-par (f :>>>: g) (WithoutComp h) = (f `par` idNoLoop) :>>>: (g :***: h)
-par f (g :>>>: h) = (f `par` g) :>>>: (Id :***: h)
+par (f :>>>: g) (WithoutComp h) = (f `par` id_) :>>>: (g :***: h)
+par (WithoutComp f) (g :>>>: h) = (id_ `par` g) :>>>: (f :***: h)
+par (f :>>>: g) (h :>>>: i) = (f `par` h) :>>>: (g :***: i)
 
 instance Arrow ANF where
-    arr = WithoutLoop . arrNoLoop
+    arr = WithoutLoop . arr_
 
     WithoutLoop f *** WithoutLoop g = WithoutLoop $ f `par` g
     Loop f *** WithoutLoop g =
         Loop $
-            arrNoLoop juggle `comp`
+            arr_ juggle `comp`
             (f `par` g) `comp`
-            arrNoLoop juggle
+            arr_ juggle
     WithoutLoop f *** Loop g =
         Loop $
-            arrNoLoop assoc `comp`
+            arr_ assoc `comp`
             (f `par` g) `comp`
-            arrNoLoop cossa
+            arr_ cossa
     Loop f *** Loop g =
         Loop $
-            arrNoLoop distribute `comp`
+            arr_ distribute `comp`
             (f `par` g) `comp`
-            arrNoLoop distribute
+            arr_ distribute
 
 instance ArrowLoop ANF where
     loop (WithoutLoop f) = Loop f
     loop (Loop f) =
         Loop $
-            arrNoLoop cossa `comp`
+            arr_ cossa `comp`
             f `comp`
-            arrNoLoop assoc
+            arr_ assoc
 
 class ArrowPre arr where
     pre :: a -> arr a a
