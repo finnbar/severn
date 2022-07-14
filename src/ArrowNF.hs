@@ -31,30 +31,29 @@ composeANF (WithoutLoop g) (WithoutLoop f) = WithoutLoop $ f `comp` g
 comp :: NoLoop a b -> NoLoop b c -> NoLoop a c
 comp = throughComps removeId
 
-throughComps :: (forall a b c. NoComp a b -> NoComp b c -> Maybe (NoLoop a c)) -> NoLoop d e -> NoLoop e f -> NoLoop d f
-throughComps red (WithoutComp f) (WithoutComp g) = case red f g of
-    Nothing -> WithoutComp f :>>>: g
-    Just nc -> nc
-throughComps red (f :>>>: g) (WithoutComp h) = case red g h of
-    Nothing -> throughComps red f (WithoutComp g) :>>>: h
-    Just nc -> throughComps red f nc
+throughComps :: (forall a b c. NoComp a b -> NoComp b c -> NoLoop a c) -> NoLoop d e -> NoLoop e f -> NoLoop d f
+throughComps red (WithoutComp f) (WithoutComp g) = red f g
+throughComps red (f :>>>: g) (WithoutComp h) = throughComps red f (red g h)
 throughComps red f (g :>>>: h) = case throughComps red g (WithoutComp h) of
     WithoutComp i -> throughComps red f (WithoutComp i)
     -- NOTE: g' = g and h' = h, but Haskell doesn't know that.
     (g' :>>>: h') -> throughComps red f g' :>>>: h'
 
 -- SIMPLIFICATION: Id >>> f ==> f <== f >>> Id
-removeId :: NoComp a b -> NoComp b c -> Maybe (NoLoop a c)
-removeId f Id = Just $ WithoutComp f
-removeId Id f = Just $ WithoutComp f
-removeId _ _  = Nothing
+removeId :: NoComp a b -> NoComp b c -> NoLoop a c
+removeId f Id = WithoutComp f
+removeId Id f = WithoutComp f
+removeId f g  = WithoutComp f :>>>: g
 
 -- SIMPLIFICATION: We move Id to the left as our transformation scrutinises the right.
--- NOTE: I don't think this works with nested ***, e.g. ((Id *** f) *** g) >>> ((h *** i) *** j).
-squashRight :: NoComp (a,b) (c,d) -> NoComp (c,d) (e,f) -> Maybe (NoLoop (a,b) (e,f))
-squashRight (f :***: g) (Id :***: h) = Just $ WithoutComp (Id :***: g) :>>>: (f :***: h)
-squashRight (f :***: g) (h :***: Id) = Just $ WithoutComp (f :***: Id) :>>>: (h :***: g)
-squashRight _ _ = Nothing
+squashRight :: NoComp a b -> NoComp b c -> NoLoop a c
+squashRight f Id = WithoutComp Id :>>>: f
+squashRight (f :***: g) (h :***: i) =
+    squashRight f h `par` squashRight g i
+-- SIMPLIFICATION: Pre is separated via product rule.
+squashRight (f :***: g) (Pre (i,j)) =
+    squashRight (f :***: g) (Pre i :***: Pre j)
+squashRight f g = WithoutComp f :>>>: g
 
 par :: NoLoop a b -> NoLoop a' b' -> NoLoop (a,a') (b,b')
 -- SIMPLIFICATION: Id *** Id ==> Id
@@ -95,7 +94,6 @@ instance ArrowLoop ANF where
 -- It would be lovely to enforce the product rule here, but this is challenging
 -- due to Haskell not being able to easily differentiate between a type
 -- variable that may contain a pair, and a pair of type variables.
--- TODO: Try to enforce this rule elsewhere.
 class ArrowPre arr where
     pre :: a -> arr a a
 

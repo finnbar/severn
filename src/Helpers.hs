@@ -12,6 +12,10 @@ cossa ~(a,~(b,c)) = ((a,b),c)
 juggle :: ((a,b),c) -> ((a,c),b)
 juggle ~(~(a,b),c) = ((a,c),b)
 
+{-# INLINE squish #-}
+squish :: (a,(b,c)) -> (b,(a,c))
+squish ~(a,~(b,c)) = (b,(a,c))
+
 {-# INLINE distribute #-}
 distribute :: ((a,b),(c,d)) -> ((a,c),(b,d))
 distribute ~(~(a,b),~(c,d)) = ((a,c),(b,d))

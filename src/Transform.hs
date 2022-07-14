@@ -3,6 +3,7 @@
 module Transform where
 
 import ArrowNF
+import Helpers
 
 -- BIG TODO: might be more helpful to have a graph representation?
 -- That sounds like a problem of statically ordering laziness at compile time.
@@ -16,6 +17,14 @@ data ALP a b where
     LoopPre :: c -> NoLoop (a,c) (b,c) -> ALP a b
     WithoutLoopPre :: NoLoop a b -> ALP a b
 
+runALP :: ALP a b -> a -> (b, ALP a b)
+runALP (WithoutLoopPre f) a =
+    let (b, f') = runNoLoop f a
+    in (b, WithoutLoopPre f')
+runALP (LoopPre i f) a =
+    let ((b,c), f') = runNoLoop f (a,i)
+    in (b, LoopPre c f')
+
 transform :: ANF a b -> ALP a b
 transform (WithoutLoop f) = WithoutLoopPre f
 transform (Loop (WithoutComp f)) = case f of
@@ -25,13 +34,15 @@ transform (Loop (WithoutComp f)) = case f of
     Pre (i,j) -> LoopPre j (WithoutComp (Pre i :***: Id))
     -- No rules can be applied.
     _ -> error "Cannot convert into loopPre."
-transform (Loop (a :>>>: f)) = case f of
+transform (Loop prog@(a :>>>: f)) = case f of
     -- Reached a success condition. (1)
+    -- TODO: need a way of merging Pres if needed.
     nc :***: Pre i -> LoopPre i (a :>>>: (nc :***: Id))
-    -- Use right sliding (loop (a >>> (b *** c)) = loop ((id *** c) >>> a >>> (b *** id)))
-    -- NOTE: will need some kind of squishing rule maybe to deal with b *** id
-    -- (e.g. if we have a *** b >>> c *** id, we can have a *** id >>> c *** b, and c *** b might fit Pre rule)
-    nc :***: nc' -> transform $ Loop $ WithoutComp (Id :***: nc') `comp` a `comp` WithoutComp (nc :***: Id)
+    -- Use right sliding (loop (a >>> (b *** c)) = loop ((id *** c) >>> a >>> (b *** id))). (3)
+    -- `throughComps squashRight` moves all useful information to the right.
+    nc :***: nc' -> transform $ Loop $ throughComps squashRight (WithoutComp (Id :***: nc') `comp` a) $ WithoutComp (nc :***: Id)
     -- Product rule then success. (2)
     Pre (i,j) -> LoopPre j (a :>>>: (Pre i :***: Id))
-    x -> undefined -- TODO: squash / reverse squash
+    -- TODO: Reverse squash (5)
+    -- Left squash. (4)
+    _ -> transform $ Loop $ WithoutComp (Arr squish) `comp` (WithoutComp Id `par` prog)
