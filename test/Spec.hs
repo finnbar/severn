@@ -5,12 +5,10 @@ import qualified Hedgehog.Gen as Gen
 import qualified Hedgehog.Range as Range
 import SpecTH
 
-import ArrowAST (AAST)
-import qualified ArrowAST as AAST
-import ArrowNF (ANF, ArrowPre(..))
-import qualified ArrowNF as ANF
-import Transform (ALP)
-import qualified Transform as T
+import FRP.Yampa (SF, embed, deltaEncode, iPre)
+import ArrowNF
+import Transform
+import Helpers (multiRun)
 
 import System.Exit (exitFailure)
 import Control.Monad
@@ -20,13 +18,12 @@ import Control.Arrow
 
 -- * Test ANF vs reference implementation.
 
-checkEqual :: (Eq b, Show b) => (AAST a b, ANF a b) -> [a] -> PropertyT IO ()
-checkEqual _ [] = return ()
-checkEqual (aast, anf) (a:as) = do
-    let (b, aast') = AAST.runAAST aast a
-        (b', anf') = ANF.runANF anf a
-    b === b'
-    checkEqual (aast', anf') as
+instance ArrowPre SF where
+    pre = iPre
+
+checkEqual :: (Eq a, Eq b, Show b) => (SF a b, ANF a b) -> [a] -> PropertyT IO ()
+checkEqual (sf, anf) ins =
+    embed sf (deltaEncode 1 ins) === multiRun runANF anf ins
 
 -- Basic check that `arr` works like in the reference implementation.
 prop_check_arr_matches :: Property
@@ -114,8 +111,8 @@ prop_loop_in_loop_related = property $ do
 checkEqual' :: (Eq b, Show b) => (ANF a b, ALP a b) -> [a] -> PropertyT IO ()
 checkEqual' _ [] = return ()
 checkEqual' (anf, alp) (a:as) = do
-    let (b, anf') = ANF.runANF anf a
-        (b', alp') = T.runALP alp a
+    let (b, anf') = runANF anf a
+        (b', alp') = runALP alp a
     b === b'
     checkEqual' (anf', alp') as
 
@@ -125,14 +122,14 @@ complexNoLoop = arr (+2) >>> arr (\x -> (x,x)) >>> arr (uncurry (+))
 prop_transform_noloop :: Property
 prop_transform_noloop = property $ do
     inps <- forAll $ Gen.list (Range.linear 5 20) $ Gen.int (Range.linear 0 1000)
-    checkEqual' (complexNoLoop, T.transform complexNoLoop) inps
+    checkEqual' (complexNoLoop, transform complexNoLoop) inps
 
 prop_transform_rightslide :: Property 
 prop_transform_rightslide = property $ do
     inps <- forAll $ Gen.list (Range.linear 5 20) $ Gen.int (Range.linear 0 1000)
     delay <- forAll $ Gen.int (Range.linear 0 1000)
     let prog = loop (arr (\(x,y) -> (x+y,x)) >>> second (pre delay) >>> second complexNoLoop)
-    checkEqual' (prog, T.transform prog) inps
+    checkEqual' (prog, transform prog) inps
 
 prop_transform_complexrouting :: Property
 prop_transform_complexrouting = property $ do
@@ -140,9 +137,9 @@ prop_transform_complexrouting = property $ do
     delay <- forAll $ Gen.int (Range.linear 0 1000)
     -- Funnily enough, the transformed version doesn't need the strictness annotations.
     let prog = loop (arr (\(~(x,~(y,z))) -> (x+y,(x,z))) >>> second (first (pre delay) >>> second (pre delay)))
-        progs = (prog, T.transform prog)
+        progs = (prog, transform prog)
     footnoteShow progs
-    checkEqual' (prog, T.transform prog) inps
+    checkEqual' (prog, transform prog) inps
 
 prop_transform_bigpre :: Property
 prop_transform_bigpre = property $ do
@@ -150,7 +147,7 @@ prop_transform_bigpre = property $ do
     delay <- forAll $ Gen.int (Range.linear 0 1000)
     delay' <- forAll $ Gen.int (Range.linear 0 1000)
     let prog = loop (arr (\(x,y) -> (x+y,x)) >>> pre (delay, delay') >>> second complexNoLoop)
-    checkEqual' (prog, T.transform prog) inps
+    checkEqual' (prog, transform prog) inps
 
 main :: IO ()
 main = do
