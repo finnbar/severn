@@ -1,5 +1,3 @@
-{-# LANGUAGE FlexibleInstances #-}
-
 module Transform where
 
 import ArrowNF
@@ -25,6 +23,10 @@ runALP (LoopPre i f) a =
     let ((b,c), f') = runNoLoop f (a,i)
     in (b, LoopPre c f')
 
+instance Show (ALP a b) where
+    show (WithoutLoopPre f) = show f
+    show (LoopPre c f) = "LoopPre " ++ show f
+
 transform :: ANF a b -> ALP a b
 transform (WithoutLoop f) = WithoutLoopPre f
 transform (Loop (WithoutComp f)) = case f of
@@ -35,14 +37,27 @@ transform (Loop (WithoutComp f)) = case f of
     -- No rules can be applied.
     _ -> error "Cannot convert into loopPre."
 transform (Loop prog@(a :>>>: f)) = case f of
-    -- Reached a success condition. (1)
-    -- TODO: need a way of merging Pres if needed.
-    nc :***: Pre i -> LoopPre i (a :>>>: (nc :***: Id))
-    -- Use right sliding (loop (a >>> (b *** c)) = loop ((id *** c) >>> a >>> (b *** id))). (3)
-    -- `throughComps squashRight` moves all useful information to the right.
-    nc :***: nc' -> transform $ Loop $ throughComps squashRight (WithoutComp (Id :***: nc') `comp` a) $ WithoutComp (nc :***: Id)
+    nc :***: nc' -> case succeeded nc nc' of
+        -- Reached a success condition. (1)
+        Just (res, del) -> LoopPre del (a :>>>: res)
+        -- Use right sliding (loop (a >>> (b *** c)) = loop ((id *** c) >>> a >>> (b *** id))). (3)
+        -- `throughComps squashRight` moves all useful information to the right.
+        -- TODO: partial slide, e.g. (Pre x *** y) should only slide y.
+        Nothing -> transform $ Loop $ ((id_ `par` lift_ nc') `comp` a) `comp` (lift_ nc `par` id_)
     -- Product rule then success. (2)
     Pre (i,j) -> LoopPre j (a :>>>: (Pre i :***: Id))
     -- TODO: Reverse squash (5)
     -- Left squash. (4)
     _ -> transform $ Loop $ WithoutComp (Arr squish) `comp` (WithoutComp Id `par` prog)
+
+succeeded :: NoComp a b -> NoComp a' b' -> Maybe (NoComp (a,a') (b,b'), b')
+succeeded nc (Pre i) = Just (nc :***: Id, i)
+succeeded nc (a :***: b) = case isPre (a :***: b) of
+    Just (Pre i) -> Just (nc :***: Id, i)
+    _ -> Nothing
+succeeded _ _ = Nothing
+
+isPre :: NoComp a b -> Maybe (NoComp a b)
+isPre (Pre i) = Just (Pre i)
+isPre (a :***: b) = (:***:) <$> isPre a <*> isPre b
+isPre _ = Nothing

@@ -2,33 +2,21 @@ module NF where
 
 -- * Data types and constructors
 
-data ANF a b where
+data ANF x y where
     Loop :: NoLoop (a,c) (b,c) -> ANF a b
     WithoutLoop :: NoLoop a b -> ANF a b
 
 infixl 1 :>>>:
-data NoLoop a b where
+data NoLoop x y where
     (:>>>:) :: NoLoop a b -> NoComp b c -> NoLoop a c
     WithoutComp :: NoComp a b -> NoLoop a b
 
 infixl 3 :***:
-data NoComp a b where
+data NoComp x y where
     (:***:) :: NoComp a b -> NoComp a' b' -> NoComp (a,a') (b,b')
     Arr :: (a -> b) -> NoComp a b
     Pre :: a -> NoComp a a
     Id :: NoComp a a
-
-lift_ :: NoComp a b -> NoLoop a b
-lift_ = WithoutComp
-
-arr_ :: (a -> b) -> NoLoop a b
-arr_ = WithoutComp . Arr
-
-id_ :: NoLoop a a
-id_ = WithoutComp Id
-
-pre_ :: a -> NoLoop a a
-pre_ = WithoutComp . Pre
 
 -- * Show instances
 

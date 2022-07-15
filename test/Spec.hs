@@ -134,15 +134,15 @@ prop_transform_rightslide = property $ do
     let prog = loop (arr (\(x,y) -> (x+y,x)) >>> second (pre delay) >>> second complexNoLoop)
     checkEqual' (prog, T.transform prog) inps
 
-{-
-TODO: Add test for complex routing -- i.e. the reason we need squashRight.
-Then find out why bigpre test isn't working.
-
 prop_transform_complexrouting :: Property
 prop_transform_complexrouting = property $ do
     inps <- forAll $ Gen.list (Range.linear 5 20) $ Gen.int (Range.linear 0 1000)
     delay <- forAll $ Gen.int (Range.linear 0 1000)
-    undefined
+    -- Funnily enough, the transformed version doesn't need the strictness annotations.
+    let prog = loop (arr (\(~(x,~(y,z))) -> (x+y,(x,z))) >>> second (first (pre delay) >>> second (pre delay)))
+        progs = (prog, T.transform prog)
+    footnoteShow progs
+    checkEqual' (prog, T.transform prog) inps
 
 prop_transform_bigpre :: Property
 prop_transform_bigpre = property $ do
@@ -151,7 +151,6 @@ prop_transform_bigpre = property $ do
     delay' <- forAll $ Gen.int (Range.linear 0 1000)
     let prog = loop (arr (\(x,y) -> (x+y,x)) >>> pre (delay, delay') >>> second complexNoLoop)
     checkEqual' (prog, T.transform prog) inps
--}
 
 main :: IO ()
 main = do
