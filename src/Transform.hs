@@ -1,7 +1,10 @@
+{-# LANGUAGE DataKinds, TupleSections #-}
+
 module Transform where
 
 import ArrowNF
-import Helpers
+
+import Data.Proxy
 
 -- BIG TODO: might be more helpful to have a graph representation?
 -- That sounds like a problem of statically ordering laziness at compile time.
@@ -42,16 +45,26 @@ transform (Loop prog@(prev :>>>: curr)) = case curr of
         Just (res, del) -> LoopPre del (prev :>>>: res)
         -- Use right sliding (loop (a >>> (b *** c)) = loop ((id *** c) >>> a >>> (b *** id))). (3)
         -- Sometimes we perform a _partial slide_ - see @partialSlide@ for details.
-        -- NOTE: may have to update these if I do complex stuff with Assoc/Squish.
         Nothing -> case prev of
             WithoutComp (_ :***: prevR) -> transform $ partialSlide currL currR prevR prev
             (_ :>>>: (_ :***: prevR)) -> transform $ partialSlide currL currR prevR prev
             _ -> transform $ Loop $ ((id_ `par` lift_ currR) `comp` prev) `comp` (lift_ currL `par` id_)
     -- Product rule then success. (2)
     Pre (i,j) -> LoopPre j (prev :>>>: (Pre i :***: Id))
-    -- TODO: Reverse squash (5)
+    -- TODO: special cases for special Arrs, to "untie" or at least push back
+    Squish -> case getPath (Proxy :: Proxy (InL This)) prev of
+        Just path -> undefined -- We can untie
+        Nothing -> undefined -- Try to move Squish back one, if that fails then doSquish
     -- Left squash. (4)
-    _ -> transform $ Loop $ WithoutComp (Arr squish) `comp` (WithoutComp Id `par` prog)
+    _ -> transform $ doSquish prog
+
+doSquish :: NoLoop (a,c) (b,c) -> ANF a b
+doSquish prog = Loop $ WithoutComp Squish `comp` (WithoutComp Id `par` prog)
+
+getPath :: Proxy x -> NoLoop a b -> Maybe (Proxy y, NoComp (Get x a) (Get y b))
+getPath tg (WithoutComp f) = (tg,) <$> retrieve tg f
+getPath tg (a :>>>: f) = getPath tg a >>=
+    \(tg', a') -> (tg',) <$> retrieve 
 
 -- This performs a _partial slide_. This means that we slide everything using right sliding,
 -- _except_ for any `pre` if they could be merged into the previous part of the program.
@@ -86,11 +99,11 @@ keepPres _ x = C2 Id x
 succeeded :: NoComp a b -> NoComp a' b' -> Maybe (NoComp (a,a') (b,b'), b')
 succeeded currL (Pre i) = Just (currL :***: Id, i)
 succeeded currL (a :***: b) = case isPre (a :***: b) of
-    Just (Pre i) -> Just (currL :***: Id, i)
-    _ -> Nothing
+        Just (Pre i) -> Just (currL :***: Id, i)
+        _ -> Nothing
+    where
+        isPre :: NoComp a b -> Maybe (NoComp a b)
+        isPre (Pre i) = Just (Pre i)
+        isPre (a :***: b) = (:***:) <$> isPre a <*> isPre b
+        isPre _ = Nothing
 succeeded _ _ = Nothing
-
-isPre :: NoComp a b -> Maybe (NoComp a b)
-isPre (Pre i) = Just (Pre i)
-isPre (a :***: b) = (:***:) <$> isPre a <*> isPre b
-isPre _ = Nothing
