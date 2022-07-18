@@ -1,5 +1,3 @@
-{-# LANGUAGE DataKinds, TypeFamilies, FlexibleInstances, ScopedTypeVariables #-}
-
 module NF where
 
 import Data.Proxy
@@ -22,33 +20,6 @@ data NoComp x y where
     Pre :: a -> NoComp a a
     Id :: NoComp a a
     Squish :: NoComp (a,(b,c)) (b,(a,c))
-
--- * Routing instances
-
-data ToGet = InL ToGet | InR ToGet | This
-
-type family Get (x :: ToGet) (y :: *) where
-    Get This a = a
-    Get (InL tg) (a,b) = Get tg a
-    Get (InR tg) (a,b) = Get tg b
-
-class Retrieve (x :: ToGet) a b where
-    retrieve :: Proxy x -> NoComp a b -> Maybe (NoComp (Get x a) (Get x b))
-
-instance Retrieve This a b where
-    retrieve _ = Just
-
-instance Retrieve tg a c => Retrieve (InL tg) (a,b) (c,d) where
-    retrieve _ (a :***: _) = retrieve (Proxy :: Proxy tg) a
-    retrieve _ (Pre (i,j)) = retrieve (Proxy :: Proxy tg) (Pre i)
-    retrieve _ Id = Just Id
-    retrieve _ _ = Nothing
-
-instance Retrieve tg b d => Retrieve (InR tg) (a,b) (c,d) where
-    retrieve _ (_ :***: b) = retrieve (Proxy :: Proxy tg) b
-    retrieve _ (Pre (i,j)) = retrieve (Proxy :: Proxy tg) (Pre j)
-    retrieve _ Id = Just Id
-    retrieve _ _ = Nothing
 
 -- * Show instances
 

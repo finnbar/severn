@@ -1,4 +1,4 @@
-{-# LANGUAGE DataKinds, TupleSections #-}
+{-# LANGUAGE DataKinds, TypeFamilies, ScopedTypeVariables #-}
 
 module Transform where
 
@@ -51,20 +51,30 @@ transform (Loop prog@(prev :>>>: curr)) = case curr of
             _ -> transform $ Loop $ ((id_ `par` lift_ currR) `comp` prev) `comp` (lift_ currL `par` id_)
     -- Product rule then success. (2)
     Pre (i,j) -> LoopPre j (prev :>>>: (Pre i :***: Id))
-    -- TODO: special cases for special Arrs, to "untie" or at least push back
-    Squish -> case getPath (Proxy :: Proxy (InL This)) prev of
-        Just path -> undefined -- We can untie
-        Nothing -> undefined -- Try to move Squish back one, if that fails then doSquish
+    -- TODO: unsquish
+    Squish -> case getUnsquishBody prev of
+        Just nl -> transform $ Loop nl
+        Nothing -> undefined -- TODO: try to do a special kind of slide through
     -- Left squash. (4)
     _ -> transform $ doSquish prog
 
+type family Snd x where
+    Snd (a,b) = b
+
+-- The reasons for needing a type family here are irritating - we could
+-- theoretically have part of the composition _not_ have tuple types, e.g.
+-- f >>> g :: arr (a,c) (b,c), but f :: arr (a,c) d and g :: arr d (b,c).
+-- We can't use a type family because a type variable might end up being a tuple,
+-- so Haskell is unable to infer what case to use between (a,b) and a.
+getUnsquishBody :: NoLoop x y -> Maybe (NoLoop (Snd x) (Snd y))
+getUnsquishBody (WithoutComp (Id :***: y)) = Just $ WithoutComp y
+getUnsquishBody (WithoutComp Id) = Just $ WithoutComp Id
+getUnsquishBody (a :>>>: (Id :***: y)) = (:>>>: y) <$> getUnsquishBody a
+getUnsquishBody (a :>>>: Id) = (:>>>: Id) <$> getUnsquishBody a
+getUnsquishBody _ = Nothing
+
 doSquish :: NoLoop (a,c) (b,c) -> ANF a b
 doSquish prog = Loop $ WithoutComp Squish `comp` (WithoutComp Id `par` prog)
-
-getPath :: Proxy x -> NoLoop a b -> Maybe (Proxy y, NoComp (Get x a) (Get y b))
-getPath tg (WithoutComp f) = (tg,) <$> retrieve tg f
-getPath tg (a :>>>: f) = getPath tg a >>=
-    \(tg', a') -> (tg',) <$> retrieve 
 
 -- This performs a _partial slide_. This means that we slide everything using right sliding,
 -- _except_ for any `pre` if they could be merged into the previous part of the program.
