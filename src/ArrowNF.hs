@@ -1,39 +1,30 @@
-{-# LANGUAGE RankNTypes #-}
-
 module ArrowNF (module NF, module ArrowNF) where
 
-import Helpers
 import NF
 
-import Prelude hiding (id, (.))
-import Control.Arrow
-import Control.Category
+import Prelude hiding (id)
 
 lift_ :: NoComp a b -> NoLoop a b
 lift_ = WithoutComp
 
-arr_ :: (a -> b) -> NoLoop a b
+arr_ :: (Val a -> Val b) -> NoLoop a b
 arr_ = WithoutComp . Arr
 
 id_ :: NoLoop a a
 id_ = WithoutComp Id
 
-pre_ :: a -> NoLoop a a
+pre_ :: Val a -> NoLoop a a
 pre_ = WithoutComp . Pre
-
-instance Category ANF where
-    id = WithoutLoop $ lift_ Id
-    g . f = composeANF g f
 
 composeANF :: ANF b c -> ANF a b -> ANF a c
 composeANF (Loop g) (Loop f) =
     Loop $
-        arr_ cossa `comp`
+        lift_ Cossa `comp`
         (f `par` id_) `comp`
-        arr_ juggle `comp`
+        lift_ Juggle `comp`
         (g `par` id_) `comp`
-        arr_ juggle `comp`
-        arr_ assoc
+        lift_ Juggle `comp`
+        lift_ Assoc
 composeANF (Loop g) (WithoutLoop f) =
     Loop $ (f `par` id_) `comp` g
 composeANF (WithoutLoop g) (Loop f) =
@@ -58,7 +49,7 @@ data CompTwo a c where
 compTwoCompose :: CompTwo a c -> NoLoop a c
 compTwoCompose (C2 x y) = WithoutComp x :>>>: y
 
-compTwoPar :: CompTwo a b -> CompTwo a' b' -> CompTwo (a,a') (b,b')
+compTwoPar :: CompTwo a b -> CompTwo a' b' -> CompTwo (P a a') (P b b')
 compTwoPar (C2 a b) (C2 a' b') = C2 (parSimplify a a') (parSimplify b b')
 
 compSimplify :: NoComp a b -> NoComp b c -> NoLoop a c
@@ -73,59 +64,64 @@ moveIdInwards :: NoComp a b -> NoComp b c -> CompTwo a c
 moveIdInwards f Id = C2 Id f
 moveIdInwards (a :***: b) (c :***: d) =
     compTwoPar (moveIdInwards a c) (moveIdInwards b d)
-moveIdInwards (Pre ij) (c :***: d) =
-    -- Important note: this looks like an unsafe pattern match, but it is fine -
-    -- since we have c :***: d on the left side, b ~ (b1, b2), so a ~ (b1, b2),
-    -- so we can use a tuple match.
-    let (i,j) = ij in moveIdInwards (Pre i :***: Pre j) (c :***: d)
+moveIdInwards (Pre (Pair i j)) (c :***: d) =
+    moveIdInwards (Pre i :***: Pre j) (c :***: d)
 moveIdInwards f g = C2 f g
 
-par :: NoLoop a b -> NoLoop a' b' -> NoLoop (a,a') (b,b')
+par :: NoLoop a b -> NoLoop a' b' -> NoLoop (P a a') (P b b')
 par (WithoutComp f) (WithoutComp g) = WithoutComp $ parSimplify f g
 par (f :>>>: g) (WithoutComp h) = (f `par` id_) `comp` WithoutComp (parSimplify g h)
 par (WithoutComp f) (g :>>>: h) = (id_ `par` g) `comp` WithoutComp (parSimplify f h)
 par (f :>>>: g) (h :>>>: i) = (f `par` h) `comp` WithoutComp (parSimplify g i)
 
-parSimplify :: NoComp a b -> NoComp a' b' -> NoComp (a,a') (b,b')
+parSimplify :: NoComp a b -> NoComp a' b' -> NoComp (P a a') (P b b')
 -- SIMPLIFICATION: Id *** Id ==> Id
 parSimplify Id Id = Id
 -- SIMPLIFICATION: Pre i *** Pre j ==> Pre (i,j)
-parSimplify (Pre i) (Pre j) = Pre (i,j)
+parSimplify (Pre i) (Pre j) = Pre (Pair i j)
 parSimplify f g = f :***: g
 
-instance Arrow ANF where
-    arr = WithoutLoop . arr_
+-- THE ARROW API FOR ANF
 
-    WithoutLoop f *** WithoutLoop g = WithoutLoop $ f `par` g
-    Loop f *** WithoutLoop g =
-        Loop $
-            arr_ juggle `comp`
-            (f `par` g) `comp`
-            arr_ juggle
-    WithoutLoop f *** Loop g =
-        Loop $
-            arr_ assoc `comp`
-            (f `par` g) `comp`
-            arr_ cossa
-    Loop f *** Loop g =
-        Loop $
-            arr_ distribute `comp`
-            (f `par` g) `comp`
-            arr_ distribute
+id :: ANF a a
+id = WithoutLoop $ lift_ Id
 
-instance ArrowLoop ANF where
-    loop (WithoutLoop f) = Loop f
-    loop (Loop f) =
-        Loop $
-            arr_ cossa `comp`
-            f `comp`
-            arr_ assoc
+(>>>) :: ANF a b -> ANF b c -> ANF a c
+f >>> g = composeANF g f
 
--- It would be lovely to enforce the product rule here, but this is challenging
--- due to Haskell not being able to easily differentiate between a type
--- variable that may contain a pair, and a pair of type variables.
-class ArrowPre arr where
-    pre :: a -> arr a a
+arr :: (Val a -> Val b) -> ANF a b
+arr = WithoutLoop . arr_
 
-instance ArrowPre ANF where
-    pre = WithoutLoop . pre_
+(***) :: ANF a b -> ANF a' b' -> ANF (P a a') (P b b')
+WithoutLoop f *** WithoutLoop g = WithoutLoop $ f `par` g
+Loop f *** WithoutLoop g =
+    Loop $
+        lift_ Juggle `comp`
+        (f `par` g) `comp`
+        lift_ Juggle
+WithoutLoop f *** Loop g =
+    Loop $
+        lift_ Assoc `comp`
+        (f `par` g) `comp`
+        lift_ Cossa
+Loop f *** Loop g =
+    Loop $
+        lift_ Distribute  `comp`
+        (f `par` g) `comp`
+        lift_ Distribute
+
+first :: ANF a b -> ANF (P a c) (P b c)
+first = (*** id)
+second :: ANF a b -> ANF (P c a) (P c b)
+second = (id ***)
+
+loop :: ANF (P a c) (P b c) -> ANF a b
+loop (WithoutLoop f) = Loop f
+loop (Loop f) =
+    Loop $
+        lift_ Cossa `comp`
+        f `comp`
+        lift_ Assoc
+
+pre :: Val a -> ANF a a
+pre = WithoutLoop . pre_

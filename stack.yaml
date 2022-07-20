@@ -42,7 +42,6 @@ packages:
 #
 extra-deps:
 - hedgehog-1.0.5
-- Yampa-0.13.5
 
 # Override default flag values for local packages and extra-deps
 # flags: {}

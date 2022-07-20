@@ -4,26 +4,16 @@ module Transform where
 
 import ArrowNF
 
-import Data.Proxy
-
--- BIG TODO: might be more helpful to have a graph representation?
--- That sounds like a problem of statically ordering laziness at compile time.
--- The challenge is working with `arr`s that reroute data (so may be fine to execute bc laziness).
--- I have no idea how to differentiate between them and normal `arr`s.
--- Generalised arrows _might_ help?
--- Might be best to provide specialised Arr for these combinators, so maybe Assoc etc., which can be
--- reasoned about or split up.
-
 data ALP a b where
-    LoopPre :: c -> NoLoop (a,c) (b,c) -> ALP a b
+    LoopPre :: Val c -> NoLoop (P a c) (P b c) -> ALP a b
     WithoutLoopPre :: NoLoop a b -> ALP a b
 
-runALP :: ALP a b -> a -> (b, ALP a b)
+runALP :: ALP a b -> Val a -> (Val b, ALP a b)
 runALP (WithoutLoopPre f) a =
     let (b, f') = runNoLoop f a
     in (b, WithoutLoopPre f')
 runALP (LoopPre i f) a =
-    let ((b,c), f') = runNoLoop f (a,i)
+    let (Pair b c, f') = runNoLoop f (Pair a i)
     in (b, LoopPre c f')
 
 instance Show (ALP a b) where
@@ -36,7 +26,7 @@ transform (Loop (WithoutComp f)) = case f of
     -- Reached a success condition. (1)
     currL :***: (Pre i) -> LoopPre i (WithoutComp (currL :***: Id))
     -- Product rule then success (pre (i,j) = pre i *** pre j). (2)
-    Pre (i,j) -> LoopPre j (WithoutComp (Pre i :***: Id))
+    Pre (Pair i j) -> LoopPre j (WithoutComp (Pre i :***: Id))
     -- No rules can be applied.
     _ -> error "Cannot convert into loopPre."
 transform (Loop prog@(prev :>>>: curr)) = case curr of
@@ -50,30 +40,14 @@ transform (Loop prog@(prev :>>>: curr)) = case curr of
             (_ :>>>: (_ :***: prevR)) -> transform $ partialSlide currL currR prevR prev
             _ -> transform $ Loop $ ((id_ `par` lift_ currR) `comp` prev) `comp` (lift_ currL `par` id_)
     -- Product rule then success. (2)
-    Pre (i,j) -> LoopPre j (prev :>>>: (Pre i :***: Id))
+    Pre (Pair i j) -> LoopPre j (prev :>>>: (Pre i :***: Id))
     -- TODO: unsquish
-    Squish -> case getUnsquishBody prev of
-        Just nl -> transform $ Loop nl
-        Nothing -> undefined -- TODO: try to do a special kind of slide through
+    Squish -> undefined
+    -- TODO: special slide through Squish etc
     -- Left squash. (4)
     _ -> transform $ doSquish prog
 
-type family Snd x where
-    Snd (a,b) = b
-
--- The reasons for needing a type family here are irritating - we could
--- theoretically have part of the composition _not_ have tuple types, e.g.
--- f >>> g :: arr (a,c) (b,c), but f :: arr (a,c) d and g :: arr d (b,c).
--- We can't use a type family because a type variable might end up being a tuple,
--- so Haskell is unable to infer what case to use between (a,b) and a.
-getUnsquishBody :: NoLoop x y -> Maybe (NoLoop (Snd x) (Snd y))
-getUnsquishBody (WithoutComp (Id :***: y)) = Just $ WithoutComp y
-getUnsquishBody (WithoutComp Id) = Just $ WithoutComp Id
-getUnsquishBody (a :>>>: (Id :***: y)) = (:>>>: y) <$> getUnsquishBody a
-getUnsquishBody (a :>>>: Id) = (:>>>: Id) <$> getUnsquishBody a
-getUnsquishBody _ = Nothing
-
-doSquish :: NoLoop (a,c) (b,c) -> ANF a b
+doSquish :: NoLoop (P a c) (P b c) -> ANF a b
 doSquish prog = Loop $ WithoutComp Squish `comp` (WithoutComp Id `par` prog)
 
 -- This performs a _partial slide_. This means that we slide everything using right sliding,
@@ -85,7 +59,7 @@ doSquish prog = Loop $ WithoutComp Squish `comp` (WithoutComp Id `par` prog)
 -- second (first f) >>> ... >>> second (pre (v,v))
 -- To do this, we split the term we are about to slide (currR) into a part to slide (slide)
 -- and a part to not slide (noslide), and assemble the new Loop accordingly.
-partialSlide :: NoComp b c -> NoComp b' c' -> NoComp a' b' -> NoLoop (a, c') (b, b') -> ANF a c
+partialSlide :: NoComp b c -> NoComp b' c' -> NoComp a' b' -> NoLoop (P a c') (P b b') -> ANF a c
 partialSlide currL currR prevR prev = case compTwoCompose $ keepPres prevR currR of
     WithoutComp currR' -> Loop $ ((id_ `par` lift_ currR') `comp` prev) `comp` (lift_ currL `par` id_)
     noslide :>>>: slide -> Loop $ ((id_ `par` lift_ slide) `comp` prev) `comp` (lift_ currL `par` noslide)
@@ -106,7 +80,7 @@ keepPres (a :***: b) (c :***: d) = compTwoPar (keepPres a c) (keepPres b d)
 keepPres _ x = C2 Id x
 
 -- Check if the bottom right element is a Pre of some form.
-succeeded :: NoComp a b -> NoComp a' b' -> Maybe (NoComp (a,a') (b,b'), b')
+succeeded :: NoComp a b -> NoComp a' b' -> Maybe (NoComp (P a a') (P b b'), Val b')
 succeeded currL (Pre i) = Just (currL :***: Id, i)
 succeeded currL (a :***: b) = case isPre (a :***: b) of
         Just (Pre i) -> Just (currL :***: Id, i)

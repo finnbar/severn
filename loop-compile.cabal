@@ -25,9 +25,9 @@ source-repository head
 
 library
   exposed-modules:
+      ArrowAST
       ArrowNF
       CCA
-      Helpers
       NF
       Transform
   other-modules:
@@ -37,6 +37,9 @@ library
   default-extensions:
       GADTs
       MultiParamTypeClasses
+      DataKinds
+      PolyKinds
+      FlexibleInstances
   build-depends:
       base >=4.7 && <5
     , template-haskell
@@ -59,14 +62,15 @@ test-suite loop-compile-test
   type: exitcode-stdio-1.0
   main-is: Spec.hs
   other-modules:
-      SpecTH
+      ArrowNFSpec
+      TestHelpers
+      TransformSpec
       Paths_loop_compile
   hs-source-dirs:
       test
   ghc-options: -threaded -rtsopts -with-rtsopts=-N
   build-depends:
-      Yampa
-    , base >=4.7 && <5
+      base >=4.7 && <5
     , hedgehog
     , loop-compile
     , template-haskell

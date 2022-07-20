@@ -28,6 +28,9 @@ library:
   default-extensions:
   - GADTs
   - MultiParamTypeClasses
+  - DataKinds
+  - PolyKinds
+  - FlexibleInstances
 
 executables:
   loop-compile-exe:
@@ -51,4 +54,3 @@ tests:
     dependencies:
     - loop-compile
     - hedgehog
-    - Yampa
