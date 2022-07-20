@@ -1,4 +1,4 @@
-{-# LANGUAGE DataKinds, TypeFamilies, ScopedTypeVariables #-}
+{-# LANGUAGE DataKinds, TypeFamilies, ScopedTypeVariables, FlexibleContexts #-}
 
 module Transform where
 
@@ -47,7 +47,7 @@ transform (Loop prog@(prev :>>>: curr)) = case curr of
     -- Left squash. (4)
     _ -> transform $ doSquish prog
 
-doSquish :: NoLoop (P a c) (P b c) -> ANF a b
+doSquish :: Loop (P b c) => NoLoop (P a c) (P b c) -> ANF a b
 doSquish prog = Loop $ WithoutComp Squish `comp` (WithoutComp Id `par` prog)
 
 -- This performs a _partial slide_. This means that we slide everything using right sliding,
@@ -59,7 +59,7 @@ doSquish prog = Loop $ WithoutComp Squish `comp` (WithoutComp Id `par` prog)
 -- second (first f) >>> ... >>> second (pre (v,v))
 -- To do this, we split the term we are about to slide (currR) into a part to slide (slide)
 -- and a part to not slide (noslide), and assemble the new Loop accordingly.
-partialSlide :: NoComp b c -> NoComp b' c' -> NoComp a' b' -> NoLoop (P a c') (P b b') -> ANF a c
+partialSlide :: Loop b' => NoComp b c -> NoComp b' c' -> NoComp a' b' -> NoLoop (P a c') (P b b') -> ANF a c
 partialSlide currL currR prevR prev = case compTwoCompose $ keepPres prevR currR of
     WithoutComp currR' -> Loop $ ((id_ `par` lift_ currR') `comp` prev) `comp` (lift_ currL `par` id_)
     noslide :>>>: slide -> Loop $ ((id_ `par` lift_ slide) `comp` prev) `comp` (lift_ currL `par` noslide)
