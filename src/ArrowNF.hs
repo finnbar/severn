@@ -4,18 +4,6 @@ import NF
 
 import Prelude hiding (id)
 
-lift_ :: NoComp a b -> NoLoop a b
-lift_ = WithoutComp
-
-arr_ :: (Val a -> Val b) -> NoLoop a b
-arr_ = WithoutComp . Arr
-
-id_ :: NoLoop a a
-id_ = WithoutComp Id
-
-pre_ :: Val a -> NoLoop a a
-pre_ = WithoutComp . Pre
-
 composeANF :: ANF b c -> ANF a b -> ANF a c
 composeANF (Loop g) (Loop f) =
     Loop $
@@ -47,6 +35,11 @@ data CompTwo a c where
     C2 :: NoComp a b -> NoComp b c -> CompTwo a c
 
 compTwoCompose :: CompTwo a c -> NoLoop a c
+-- SIMPLIFICATION: Id >>> f ==> f <== f >>> Id
+-- This is partially covered in `compSimplify` but needs restating here as we
+-- never check this condition _after_ moveIdInwards.
+compTwoCompose (C2 Id y) = WithoutComp y
+compTwoCompose (C2 x Id) = WithoutComp x
 compTwoCompose (C2 x y) = WithoutComp x :>>>: y
 
 compTwoPar :: CompTwo a b -> CompTwo a' b' -> CompTwo (P a a') (P b b')

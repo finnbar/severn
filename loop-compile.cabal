@@ -25,7 +25,6 @@ source-repository head
 
 library
   exposed-modules:
-      ArrowAST
       ArrowNF
       CCA
       NF
@@ -62,6 +61,7 @@ test-suite loop-compile-test
   type: exitcode-stdio-1.0
   main-is: Spec.hs
   other-modules:
+      ArrowNFGen
       ArrowNFSpec
       TestHelpers
       TransformSpec

@@ -6,86 +6,101 @@ module ArrowNFSpec (arrowNFSpec) where
 import Hedgehog
 import qualified Hedgehog.Gen as Gen
 import qualified Hedgehog.Range as Range
+
+import Data.Proxy (Proxy(..))
+
+import ArrowNF
+import ArrowNFGen
 import TestHelpers
 
-import ArrowAST
-import ArrowNF (ANF, Desc(..), Val(..), runANF)
+-- * Make sure that ArrowNF upholds the properties we set about it.
+-- Also make sure the Loop laws continue to hold.
 
--- * Test ANF vs reference implementation.
-
-checkEqual :: forall k (a :: Desc k) (b :: Desc k). (Eq (Val a), Eq (Val b), Show (Val b)) =>
-    ArrowAST a b -> [Val a] -> PropertyT IO ()
-checkEqual prog ins =
-    multiRun runArrowAST prog ins === multiRun runANF (toANF prog) ins
-
--- Basic check that `arr` works like in the reference implementation.
-prop_check_arr_matches :: Property
-prop_check_arr_matches = property $ do
-    inps <- forAll genOnes
-    checkEqual (arrAST (+1)) inps
-
--- Check that a simple loop works like the reference implementation.
-prop_simple_loop :: Property
-prop_simple_loop = property $ do
-    inps <- forAll genOnes
-    let prog = Loop (arrAST2 (\(a,b) -> (a+b, a)) :>>>: Second (preAST 0))
-    checkEqual prog inps
-
--- Check that `***` works like the reference implementation.
-prop_par :: Property
-prop_par = property $ do
-    inps <- forAll genPairs
-    checkEqual (arrAST (+1) :***: arrAST (+2)) inps
-
--- Check that (f >>> g) *** (h >>> i) works. This is relevant because our
--- implementation transforms this to (f *** h) >>> (g *** i).
+-- Check that (f >>> g) *** (h >>> i) works [LHS]. This is relevant because our
+-- implementation transforms this to (f *** h) >>> (g *** i) [RHS].
 prop_distribute :: Property
 prop_distribute = property $ do
-    inps <- forAll genPairs
-    let prog = (arrAST (+1) :>>>: arrAST (+2)) :***: (arrAST (+3) :>>>: arrAST (+4))
-    checkEqual prog inps
+    len <- forAll $ Gen.integral (Range.linear 1 20)
+    (lhs, rhs) <- forAll $ genDistributiveTest len
+    lhs === rhs
 
--- Check that the above also works with `pre` (which updates internal state).
-prop_distribute_pre :: Property
-prop_distribute_pre = property $ do
-    inps <- forAll genPairs
-    let prog = (arrAST (+1) :>>>: preAST 0) :***: (preAST 0 :>>>: arrAST (+4))
-    checkEqual prog inps
+-- Make sure that Id >>> f ==> f <== f >>> Id
+prop_no_id :: Property
+prop_no_id = property $ do
+    len <- forAll $ Gen.integral (Range.linear 1 50)
+    (clean, dirty) <- forAll $ genNCompsWithId len
+    clean === dirty
 
--- Check that `first` and `second` work accordingly.
-prop_first_second :: Property
-prop_first_second = property $ do
-    inps <- forAll genPairs
-    let prog = First (arrAST (+1)) :>>>: Second (arrAST (+2))
-    checkEqual prog inps
+-- Make sure that Id *** Id ==> Id
+prop_no_pair_id :: Property
+prop_no_pair_id = property $ do
+    len <- forAll $ Gen.integral (Range.linear 1 50)
+    (clean, dirty) <- forAll $ genNCompsWithPairId len
+    clean === dirty
 
--- Check that a loop inside a loop works.
-prop_loop_in_loop :: Property
-prop_loop_in_loop = property $ do
-    inps <- forAll genOnes
-    let prog = Loop (Loop (arrAST21 (\((a,c),b) -> ((a+b,c),a)) 
-            :>>>: Second (preAST 0)) :>>>: Second (preAST 0))
-    checkEqual prog inps
+-- Make sure that Pre i *** Pre j ==> Pre (i,j)
+-- NOTE: our Eq check doesn't check the contents of pre, so this test only
+-- checks that a Pre pair is replaced with a single Pre.
+prop_no_pre_pairs :: Property
+prop_no_pre_pairs = property $ do
+    len <- forAll $ Gen.integral (Range.linear 1 50)
+    (clean, dirty) <- forAll $ genNCompsWithPrePairs len
+    clean === dirty
 
--- Checks that a composition of loops, where neither loop affects the other, works.
-prop_loop_in_loop_composed :: Property
-prop_loop_in_loop_composed = property $ do
-    inps <- forAll genOnes
-    let prog = Loop (First (Loop (arrAST2 (\(a,b) -> (a+b, a)) :>>>: Second (preAST 0)))
-                :>>>: Second (Loop (arrAST2 (\(a,b) -> (a+b, a)) :>>>: Second (preAST 0)))
-                :>>>: Second (preAST 0))
-    checkEqual prog inps
+-- Make sure that right crunch is being obeyed, that is:
+-- (a *** b) >>> (c *** id) = (a *** id) >>> (c *** b)
+-- and
+-- (a *** b) >>> (id *** c) = (id *** b) >>> (a *** c)
+-- This should apply regardless of nesting.
+prop_right_crunch :: Property
+prop_right_crunch = property $ do
+    -- We have to specify the sizes of nesting that we work with.
+    -- Therefore, we test a few different sizes.
+    -- Regular sized (common in `loop`)
+    ((lt, rt), (lt', rt')) <- forAll $
+        genCrunchTrees (Proxy :: Proxy ('P ('V Int) ('V Int)))
+    lt >>> rt === lt' >>> rt'
+    -- Large (uncommon)
+    ((lt2, rt2), (lt2', rt2')) <- forAll $
+        genCrunchTrees (Proxy :: Proxy ('P ('P ('V Int) ('V Int)) ('P ('V Int) ('V Int))))
+    lt2 >>> rt2 === lt2' >>> rt2'
+    -- Unbalanced (similar to Assoc)
+    ((lt3, rt3), (lt3', rt3')) <- forAll $
+        genCrunchTrees (Proxy :: Proxy ('P ('P ('V Int) ('V Int)) ('V Int)))
+    lt3 >>> rt3 === lt3' >>> rt3'
 
--- Checks that a composition of loops, where the result of one is used in the other, works.
-prop_loop_in_loop_related :: Property
-prop_loop_in_loop_related = property $ do
-    inps <- forAll genOnes
-    let progs = Loop (First (Loop (arrAST2 (\(a,b) -> (a+b, a)) :>>>: Second (preAST 0)))
-                :>>>: Arr (\(Pair (One a) (One b)) -> One $ a + b)
-                :>>>: Loop (arrAST2 (\(a,b) -> (a+b, a)) :>>>: Second (preAST 0))
-                :>>>: Arr (\x -> Pair x x)
-                :>>>: Second (preAST 0))
-    checkEqual progs inps
+prop_loop_left_tightening :: Property
+prop_loop_left_tightening = property $ do
+    len1 <- forAll $ Gen.integral (Range.linear 1 20)
+    len2 <- forAll $ Gen.integral (Range.linear 1 20)
+    h <- forAll $ genSingleProg len1
+    f <- forAll $ genPairProg len2
+    loop (first h >>> f) === h >>> loop f
+
+prop_loop_right_tightening :: Property
+prop_loop_right_tightening = property $ do
+    len1 <- forAll $ Gen.integral (Range.linear 1 20)
+    len2 <- forAll $ Gen.integral (Range.linear 1 20)
+    h <- forAll $ genSingleProg len1
+    f <- forAll $ genPairProg len2
+    loop (f >>> first h) === loop f >>> h
+
+-- We do not prove sliding because our normal forms are not equal under sliding.
+-- (That's what the transform function is for!)
+
+prop_loop_vanishing :: Property
+prop_loop_vanishing = property $ do
+    len <- forAll $ Gen.integral (Range.linear 1 20)
+    f <- forAll $ genTrioProg len
+    loop (loop f) ===
+        loop (WithoutLoop (lift_ Cossa) >>> f >>> WithoutLoop (lift_ Assoc))
+
+prop_loop_superposing :: Property
+prop_loop_superposing = property $ do
+    len <- forAll $ Gen.integral (Range.linear 1 20)
+    f <- forAll $ genTrioProg len
+    second (loop f) ===
+        loop (WithoutLoop (lift_ Assoc) >>> second f >>> WithoutLoop (lift_ Cossa))
 
 arrowNFSpec :: Group
-arrowNFSpec = $$(discover) {groupName = "ArrowNF matches its reference implementation"}
+arrowNFSpec = $$(discover) {groupName = "ArrowNF invariants hold"}

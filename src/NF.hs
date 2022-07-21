@@ -67,20 +67,34 @@ instance Show (NoComp a b) where
 
 -- * Eq instances
 
+-- This is an extremely dodgy Eq instance, but it does the job - our `show`
+-- correctly notes precedence. We do not compare Arrs and Pres (cannot determine
+-- function equality, nor guarantee variable equality due to hdiden types
+-- within our GADTs), but everything else compares correctly.
+instance Eq (ANF a b) where
+    f == f' = show f == show f'
+
 instance Eq a => Eq (Val (V a)) where
     One a == One b = a == b
 
 instance (Eq (Val a), Eq (Val b)) => Eq (Val (P a b)) where
     Pair a b == Pair a' b' = a == a' && b == b'
 
--- * Running functions
+-- Helper lift functions
 
-debug :: ANF a b -> String
-debug = show
+lift_ :: NoComp a b -> NoLoop a b
+lift_ = WithoutComp
 
-runANF :: ANF a b -> Val a -> (Val b, ANF a b)
-runANF (Loop f) a = let (Pair b c, cont) = runNoLoop f (Pair a c) in (b, Loop cont)
-runANF (WithoutLoop f) a = let (b, cont) = runNoLoop f a in (b, WithoutLoop cont)
+arr_ :: (Val a -> Val b) -> NoLoop a b
+arr_ = WithoutComp . Arr
+
+id_ :: NoLoop a a
+id_ = WithoutComp Id
+
+pre_ :: Val a -> NoLoop a a
+pre_ = WithoutComp . Pre
+
+-- * Some running functions
 
 runNoLoop :: NoLoop a b -> Val a -> (Val b, NoLoop a b)
 runNoLoop (f :>>>: g) a =
