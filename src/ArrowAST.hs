@@ -15,7 +15,7 @@ data ArrowAST x y where
     First :: ArrowAST a b -> ArrowAST (P a c) (P b c)
     Second :: ArrowAST a b -> ArrowAST (P c a) (P c b)
     Pre :: Val a -> ArrowAST a a
-    Loop :: NF.Loop c => ArrowAST (P a c) (P b c) -> ArrowAST a b
+    Loop :: ArrowAST (P a c) (P b c) -> ArrowAST a b
 
 instance Show (ArrowAST x y) where
     show (Arr f) = "Arr"
@@ -53,5 +53,5 @@ runArrowAST (Second g) (Pair a b) =
     in (Pair a b', Second g')
 runArrowAST (Pre v) a = (v, Pre a)
 runArrowAST (Loop f) a =
-    let (b, cont) = NF.loops (runArrowAST f) a
+    let (Pair b c, cont) = runArrowAST f (Pair a c)
     in (b, Loop cont)

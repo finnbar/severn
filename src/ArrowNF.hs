@@ -115,7 +115,7 @@ first = (*** id)
 second :: ANF a b -> ANF (P c a) (P c b)
 second = (id ***)
 
-loop :: Loop c => ANF (P a c) (P b c) -> ANF a b
+loop :: ANF (P a c) (P b c) -> ANF a b
 loop (WithoutLoop f) = Loop f
 loop (Loop f) =
     Loop $

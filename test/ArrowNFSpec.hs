@@ -59,9 +59,6 @@ prop_first_second = property $ do
     let prog = First (arrAST (+1)) :>>>: Second (arrAST (+2))
     checkEqual prog inps
 
-{-
--- NOTE: these currently don't work because Assoc etc aren't lazy
-
 -- Check that a loop inside a loop works.
 prop_loop_in_loop :: Property
 prop_loop_in_loop = property $ do
@@ -89,7 +86,6 @@ prop_loop_in_loop_related = property $ do
                 :>>>: Arr (\x -> Pair x x)
                 :>>>: Second (preAST 0))
     checkEqual progs inps
--}
 
 arrowNFSpec :: Group
 arrowNFSpec = $$(discover) {groupName = "ArrowNF matches its reference implementation"}
