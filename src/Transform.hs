@@ -1,4 +1,4 @@
-{-# LANGUAGE DataKinds, TypeFamilies, ScopedTypeVariables #-}
+{-# LANGUAGE DataKinds #-}
 
 module Transform where
 
@@ -29,8 +29,11 @@ transform (Loop (WithoutComp f)) = case f of
     Pre (Pair i j) -> LoopPre j (WithoutComp (Pre i :***: Id))
     -- No rules can be applied.
     _ -> error "Cannot convert into loopPre."
-transform (Loop prog@(prev :>>>: curr)) = case curr of
-    currL :***: currR -> case succeeded currL currR of
+transform (Loop (prev :>>>: curr)) = compTransform prev curr
+
+compTransform :: NoLoop (P a c) d -> NoComp d (P b c) -> ALP a b
+compTransform prev (currL :***: currR) =
+    case succeeded currL currR of
         -- Reached a success condition. (1)
         Just (res, del) -> LoopPre del (prev :>>>: res)
         -- Use right sliding (loop (a >>> (b *** c)) = loop ((id *** c) >>> a >>> (b *** id))). (3)
@@ -39,13 +42,13 @@ transform (Loop prog@(prev :>>>: curr)) = case curr of
             WithoutComp (_ :***: prevR) -> transform $ partialSlide currL currR prevR prev
             (_ :>>>: (_ :***: prevR)) -> transform $ partialSlide currL currR prevR prev
             _ -> transform $ Loop $ ((id_ `par` lift_ currR) `comp` prev) `comp` (lift_ currL `par` id_)
-    -- Product rule then success. (2)
-    Pre (Pair i j) -> LoopPre j (prev :>>>: (Pre i :***: Id))
-    -- TODO: unsquish
-    Squish -> undefined
-    -- TODO: special slide through Squish etc
-    -- Left squash. (4)
-    _ -> transform $ doSquish prog
+-- Product rule then success. (2)
+compTransform prev (Pre (Pair i j)) = LoopPre j (prev :>>>: (Pre i :***: Id))
+-- TODO: unsquish or weird rotate (NOTE my original thought was wrong, see example in notes)
+-- TODO: rest of weird rotates
+compTransform prev Squish = undefined
+-- Otherwise squish. (4)
+compTransform prev curr = transform $ doSquish (prev :>>>: curr)
 
 doSquish :: NoLoop (P a c) (P b c) -> ANF a b
 doSquish prog = Loop $ WithoutComp Squish `comp` (WithoutComp Id `par` prog)
