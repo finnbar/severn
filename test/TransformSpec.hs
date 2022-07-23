@@ -63,5 +63,7 @@ prop_right_slide = property $ do
 -- * A test requiring right crush, so second (first pre >>> second pre)
 -- * (once implemented) a test requiring left slide (second pre >>> arr2)
 
+-- TODO: benchmarks! Compare a large SF vs its ALP version.
+
 transformSpec :: Group
 transformSpec = $$(discover) {groupName = "Transform produces equivalent programs"}

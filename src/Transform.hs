@@ -1,9 +1,8 @@
-{-# LANGUAGE DataKinds, ScopedTypeVariables, TypeOperators #-}
+{-# LANGUAGE DataKinds, ScopedTypeVariables #-}
 
 module Transform where
 
 import ArrowNF
-import Data.Typeable
 
 data ALP a b where
     LoopPre :: Val c -> NoLoop (P a c) (P b c) -> ALP a b
@@ -25,28 +24,26 @@ transform :: ANF a b -> ALP a b
 transform (WithoutLoop f) = WithoutLoopPre f
 transform (Loop (WithoutComp f)) = case f of
     -- Reached a success condition. (1)
-    currL :***: currR -> case getPre currR of
-        Just (i, HRefl) -> LoopPre i (WithoutComp (currL :***: Id))
+    currL :***: currR -> case extractPre currR of
+        Just (i, currR') -> LoopPre i (WithoutComp (currL :***: currR'))
         Nothing -> error "Cannot convert into loopPre."
     -- No rules can be applied.
     _ -> error "Cannot convert into loopPre."
 transform (Loop (prev :>>>: curr)) = compTransform prev curr
 
 compTransform :: NoLoop (P a c) d -> NoComp d (P b c) -> ALP a b
-compTransform prev curr@(currL :***: currR) = case getPre currR of
-    Just (i, HRefl) -> LoopPre i (prev :>>>: (currL :***: Id))
+compTransform prev curr@(currL :***: currR) = case extractPre currR of
+    Just (i, currR') -> LoopPre i (prev :>>>: (currL :***: currR'))
     Nothing -> rightSlide prev curr
 compTransform prev curr = rightSlide prev curr
 
--- We use an equality proof here to persuade the compiler that a ~ b. We need
--- this because we're replacing currL :: NoComp a b with Id :: NoComp a a.
-getPre :: NoComp a b -> Maybe (Val b, a :~~: b)
-getPre (Pre i) = Just (i, HRefl)
-getPre (a :***: b) = do
-    (l, HRefl) <- getPre a
-    (r, HRefl) <- getPre b
-    return (Pair l r, HRefl)
-getPre _ = Nothing
+extractPre :: NoComp a b -> Maybe (Val b, NoComp a b)
+extractPre (Pre i) = Just (i, Id)
+extractPre (a :***: b) = do
+    (l, Id) <- extractPre a
+    (r, Id) <- extractPre b
+    return (Pair l r, Id)
+extractPre _ = Nothing
 
 rightSlide :: NoLoop (P a c) d -> NoComp d (P b c) -> ALP a b
 rightSlide prev (currL :***: currR) =
