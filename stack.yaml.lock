@@ -11,6 +11,13 @@ packages:
       sha256: f40c711c1b9bca36d0ebff5175fb4b1a5bf1279ae04f3d2e4c1f0afd9cfc53b5
   original:
     hackage: hedgehog-1.0.5
+- completed:
+    hackage: Yampa-0.13.5@sha256:0790e40a977ece8add63949fa6313018e75803d45e717d2e7f0078391e14440d,6263
+    pantry-tree:
+      size: 2168
+      sha256: ac15337f5e1200eb6e8f2df0b275a11a462012474b2e7b054dc8f5a7ccf8990c
+  original:
+    hackage: Yampa-0.13.5
 snapshots:
 - completed:
     size: 618952

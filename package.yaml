@@ -54,3 +54,4 @@ tests:
     dependencies:
     - loop-compile
     - hedgehog
+    - Yampa

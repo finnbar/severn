@@ -26,14 +26,18 @@ data NoLoop x y where
     (:>>>:) :: NoLoop a b -> NoComp b c -> NoLoop a c
     WithoutComp :: NoComp a b -> NoLoop a b
 
+-- @CompTwo@ represents exactly two composed terms.
+-- This is used to avoid some awkward pattern matching.
+data CompTwo a c where
+    C2 :: NoComp a b -> NoComp b c -> CompTwo a c
+
 infixl 3 :***:
 type NoComp :: forall s s'. Desc s -> Desc s' -> *
 data NoComp x y where
     (:***:) :: NoComp a b -> NoComp a' b' -> NoComp (P a a') (P b b')
     Arr :: (Val a -> Val b) -> NoComp a b
-    Pre :: Val a -> NoComp a a
+    Pre :: Val (V a) -> NoComp (V a) (V a)
     Id :: NoComp a a
-    Squish :: NoComp (P a (P b c)) (P b (P a c))
     Assoc :: NoComp (P (P a b) c) (P a (P b c))
     Cossa :: NoComp (P a (P b c)) (P (P a b) c)
     Juggle :: NoComp (P (P a b) c) (P (P a c) b)
@@ -59,7 +63,6 @@ instance Show (NoComp a b) where
     show (Arr f) = "Arr"
     show (Pre a) = "Pre"
     show Id = "Id"
-    show Squish = "Squish"
     show Assoc = "Assoc"
     show Cossa = "Cossa"
     show Juggle = "Juggle"
@@ -92,7 +95,11 @@ id_ :: NoLoop a a
 id_ = WithoutComp Id
 
 pre_ :: Val a -> NoLoop a a
-pre_ = WithoutComp . Pre
+pre_ = WithoutComp . preHelp
+    where
+        preHelp :: Val a -> NoComp a a
+        preHelp (One a) = Pre (One a)
+        preHelp (Pair a b) = preHelp a :***: preHelp b
 
 -- * Some running functions
 
@@ -111,7 +118,6 @@ runNoComp (f :***: g) (Pair a b) =
 runNoComp (Arr f) a = (f a, Arr f)
 runNoComp (Pre i) a = (i, Pre a)
 runNoComp Id a = (a, Id)
-runNoComp Squish (Pair a (Pair b c)) = (Pair b (Pair a c), Squish)
 runNoComp Assoc (Pair (Pair a b) c) = (Pair a (Pair b c), Assoc)
 runNoComp Cossa (Pair a (Pair b c)) = (Pair (Pair a b) c, Cossa)
 runNoComp Juggle (Pair (Pair a b) c) = (Pair (Pair a c) b, Juggle)

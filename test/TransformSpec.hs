@@ -1,5 +1,5 @@
-{-# LANGUAGE TemplateHaskell, DataKinds, FlexibleContexts,
-    OverloadedStrings, GADTs #-}
+{-# LANGUAGE TemplateHaskell, DataKinds, FlexibleContexts, StandaloneKindSignatures,
+    OverloadedStrings, GADTs, PolyKinds, TypeFamilies, ExplicitForAll #-}
 
 module TransformSpec (transformSpec) where
 
@@ -9,53 +9,59 @@ import qualified Hedgehog.Range as Range
 
 import ArrowNF
 import Transform
+import TestHelpers
+
+import FRP.Yampa (deltaEncode, embed, SF, iPre)
+import qualified Control.Arrow as A
 
 -- * Test `transform`.
 -- General idea is to test a prewritten program against a Yampa equivalent.
 
-{-
-checkEqual :: (Eq (Val b), Show (Val b)) => ANF a b -> [Val a] -> PropertyT IO ()
-checkEqual prog = checkEqual' (prog, transform prog)
+type Simplify :: forall s. Desc s -> *
+type family Simplify x where
+    Simplify (V a) = a
+    Simplify (P a b) = (Simplify a, Simplify b)
 
-checkEqual' :: (Eq (Val b), Show (Val b)) => (ANF a b, ALP a b) -> [Val a] -> PropertyT IO ()
-checkEqual' (anf, alp) ins =
-    multiRun runANF anf ins === multiRun runALP alp ins
+removeDesc :: Val a -> Simplify a
+removeDesc (One a) = a
+removeDesc (Pair a b) = (removeDesc a, removeDesc b)
 
-complexNoLoop :: ANF (V Int) (V Int)
-complexNoLoop = arr (\(One a) -> One (a+2)) >>> arr (\x -> Pair x x)
-    >>> arr (\(Pair (One a) (One b)) -> One (a + b))
+checkEqual :: (Eq (Simplify a), Eq (Simplify b), Show (Simplify b)) =>
+    (ALP a b, SF (Simplify a) (Simplify b)) -> ([Val a], [Simplify a]) -> PropertyT IO ()
+checkEqual (alp, sf) (ins, ins') =
+    let sfres = embed sf (deltaEncode 1 ins')
+        alpres = map removeDesc $ multiRun runALP alp ins
+    in sfres === alpres
 
 prop_transform_noloop :: Property
 prop_transform_noloop = property $ do
-    inps <- forAll genOneVals
-    checkEqual complexNoLoop inps
+    (ins, ins') <- forAll genPairVals
+    len <- forAll $ Gen.integral (Range.linear 1 10)
+    (anf, sf) <- forAllWith (show . fst) $ genPairProg len
+    checkEqual (transform anf, sf) (ins, ins')
 
-prop_transform_rightslide :: Property 
-prop_transform_rightslide = property $ do
-    inps <- forAll genOneVals
-    delay <- forAll genOne
-    let prog = loop (arr (\(Pair (One x) (One y)) -> Pair (One $ x+y) (One x)) >>> second (pre delay) >>> second complexNoLoop)
-    checkEqual prog inps
+prop_transform_trivial :: Property
+prop_transform_trivial = property $ do
+    (ins, ins') <- forAll genOneVals
+    len <- forAll $ Gen.integral (Range.linear 1 10)
+    (anf, sf) <- forAllWith (show . fst) $ genPairProg len
+    (del, del') <- forAll genOneVal
+    checkEqual (transform $ loop $ anf >>> second (pre del), A.loop $ sf A.>>> A.second (iPre del')) (ins, ins')
 
-prop_transform_complexrouting :: Property
-prop_transform_complexrouting = property $ do
-    inps <- forAll genOneVals
-    delay <- forAll genOne
-    -- Funnily enough, the transformed version doesn't need the strictness annotations.
-    let prog = loop (arr fn
-            >>> second (first (pre delay) >>> second (pre delay)))
-    checkEqual prog inps
-    where
-        fn :: Val (P (V Int) (P (V Int) (V Int))) -> Val (P (V Int) (P (V Int) (V Int)))
-        fn (Pair (One x) (Pair (One y) (One z))) = Pair (One $ x + y) (Pair (One x) (One z))
+prop_right_slide :: Property
+prop_right_slide = property $ do
+    (ins, ins') <- forAll genOneVals
+    pairLen <- forAll $ Gen.integral (Range.linear 1 10)
+    singleLen <- forAll $ Gen.integral (Range.linear 1 5)
+    (anfmain, sfmain) <- forAllWith (show . fst) $ genPairProg pairLen
+    (anftail, sftail) <- forAllWith (show . fst) $ genSingleProg singleLen
+    (del, del') <- forAll genOneVal
+    checkEqual (transform $ loop $ anfmain >>> second (pre del >>> anftail), A.loop $ sfmain A.>>> A.second (iPre del' A.>>> sftail)) (ins, ins')
 
-prop_transform_bigpre :: Property
-prop_transform_bigpre = property $ do
-    inps <- forAll genOneVals
-    delay <- forAll genOne
-    delay' <- forAll genOne
-    let prog = loop (arr (\(Pair (One x) (One y)) -> Pair (One $ x+y) (One x)) >>> pre (Pair delay delay') >>> second complexNoLoop)
-    checkEqual prog inps
--}
+-- TODO: A few more tests.
+-- * A test requiring a larger pre, so second (pre (i,j))
+-- * A test requiring right crush, so second (first pre >>> second pre)
+-- * (once implemented) a test requiring left slide (second pre >>> arr2)
+
 transformSpec :: Group
 transformSpec = $$(discover) {groupName = "Transform produces equivalent programs"}

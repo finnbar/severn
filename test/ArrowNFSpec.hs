@@ -38,7 +38,7 @@ prop_no_pair_id = property $ do
     (clean, dirty) <- forAll $ genNCompsWithPairId len
     clean === dirty
 
--- Make sure that Pre i *** Pre j ==> Pre (i,j)
+-- Make sure that Pre (i,j) ==> Pre i *** Pre j
 -- NOTE: our Eq check doesn't check the contents of pre, so this test only
 -- checks that a Pre pair is replaced with a single Pre.
 prop_no_pre_pairs :: Property
@@ -73,16 +73,16 @@ prop_loop_left_tightening :: Property
 prop_loop_left_tightening = property $ do
     len1 <- forAll $ Gen.integral (Range.linear 1 20)
     len2 <- forAll $ Gen.integral (Range.linear 1 20)
-    h <- forAll $ genSingleProg len1
-    f <- forAll $ genPairProg len2
+    h <- forAll $ fst <$> genSingleProg len1
+    f <- forAll $ fst <$> genPairProg len2
     loop (first h >>> f) === h >>> loop f
 
 prop_loop_right_tightening :: Property
 prop_loop_right_tightening = property $ do
     len1 <- forAll $ Gen.integral (Range.linear 1 20)
     len2 <- forAll $ Gen.integral (Range.linear 1 20)
-    h <- forAll $ genSingleProg len1
-    f <- forAll $ genPairProg len2
+    h <- forAll $ fst <$> genSingleProg len1
+    f <- forAll $ fst <$> genPairProg len2
     loop (f >>> first h) === loop f >>> h
 
 -- We do not prove sliding because our normal forms are not equal under sliding.
@@ -91,14 +91,14 @@ prop_loop_right_tightening = property $ do
 prop_loop_vanishing :: Property
 prop_loop_vanishing = property $ do
     len <- forAll $ Gen.integral (Range.linear 1 20)
-    f <- forAll $ genTrioProg len
+    f <- forAll $ fst <$> genTrioProg len
     loop (loop f) ===
         loop (WithoutLoop (lift_ Cossa) >>> f >>> WithoutLoop (lift_ Assoc))
 
 prop_loop_superposing :: Property
 prop_loop_superposing = property $ do
     len <- forAll $ Gen.integral (Range.linear 1 20)
-    f <- forAll $ genTrioProg len
+    f <- forAll $ fst <$> genTrioProg len
     second (loop f) ===
         loop (WithoutLoop (lift_ Assoc) >>> second f >>> WithoutLoop (lift_ Cossa))
 

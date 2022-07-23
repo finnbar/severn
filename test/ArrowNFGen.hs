@@ -30,18 +30,18 @@ genDistributiveTest n
             Gen ((ANF ('V Int) ('V Int), ANF ('V Int) ('V Int)),
                 ANF ('P ('V Int) ('V Int)) ('P ('V Int) ('V Int)))
         genNComposition 1 = do
-            f <- genSingle
-            f' <- genSingle
+            f <- fst <$> genSingle
+            f' <- fst <$> genSingle
             return ((f, f'), f *** f')
         genNComposition n = do
             ((l, r),lr) <- genNComposition (n-1)
-            f <- genSingle
-            f' <- genSingle
+            f <- fst <$> genSingle
+            f' <- fst <$> genSingle
             return ((l >>> f, r >>> f'), lr >>> (f *** f'))
 
 genNCompsWithId :: Int -> Gen (ANF ('V Int) ('V Int), ANF ('V Int) ('V Int))
 genNCompsWithId 1 = do
-    sing <- genSingle
+    sing <- fst <$> genSingle
     sing' <- Gen.element [
             sing,
             id >>> sing,
@@ -57,7 +57,7 @@ genNCompsWithPairId :: Int ->
     Gen (ANF ('P ('V Int) ('V Int)) ('P ('V Int) ('V Int)),
     ANF ('P ('V Int) ('V Int)) ('P ('V Int) ('V Int)))
 genNCompsWithPairId 1 = do
-    pair <- genPair
+    pair <- fst <$> genPair
     pair' <- Gen.element [
             pair,
             (id *** id) >>> pair,
@@ -78,14 +78,14 @@ genNCompsWithPrePairs 1 =
     Gen.choice [
         dup <$> Gen.constant (arr $ \(Pair (One a) (One b)) -> Pair (One $ a + b) (One b)),
         genPrePair,
-        dup . first <$> genSingle,
-        dup . second <$> genSingle
+        dup . first . fst <$> genSingle,
+        dup . second . fst <$> genSingle
     ]
     where
         dup x = (x,x)
         genPrePair = do
-            l <- genOneVal
-            r <- genOneVal
+            l <- fst <$> genOneVal
+            r <- fst <$> genOneVal
             return (pre (Pair l r), pre l *** pre r)
 genNCompsWithPrePairs n = do
     (pair, pair') <- genNCompsWithPrePairs 1
@@ -101,10 +101,10 @@ class GenCrunchTrees a where
 instance GenCrunchTrees ('V Int) where
     genCrunchTrees _ = Gen.choice [
             do
-                lhs <- genSingle
+                lhs <- fst <$> genSingle
                 return ((lhs, id), (id, lhs)),
             do
-                rhs <- genSingle
+                rhs <- fst <$> genSingle
                 return ((id, rhs), (id, rhs))
         ]
 

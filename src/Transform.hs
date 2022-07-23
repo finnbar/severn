@@ -1,8 +1,9 @@
-{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE DataKinds, ScopedTypeVariables, TypeOperators #-}
 
 module Transform where
 
 import ArrowNF
+import Data.Typeable
 
 data ALP a b where
     LoopPre :: Val c -> NoLoop (P a c) (P b c) -> ALP a b
@@ -24,34 +25,59 @@ transform :: ANF a b -> ALP a b
 transform (WithoutLoop f) = WithoutLoopPre f
 transform (Loop (WithoutComp f)) = case f of
     -- Reached a success condition. (1)
-    currL :***: (Pre i) -> LoopPre i (WithoutComp (currL :***: Id))
-    -- Product rule then success (pre (i,j) = pre i *** pre j). (2)
-    Pre (Pair i j) -> LoopPre j (WithoutComp (Pre i :***: Id))
+    currL :***: currR -> case getPre currR of
+        Just (i, HRefl) -> LoopPre i (WithoutComp (currL :***: Id))
+        Nothing -> error "Cannot convert into loopPre."
     -- No rules can be applied.
     _ -> error "Cannot convert into loopPre."
 transform (Loop (prev :>>>: curr)) = compTransform prev curr
 
 compTransform :: NoLoop (P a c) d -> NoComp d (P b c) -> ALP a b
-compTransform prev (currL :***: currR) =
-    case succeeded currL currR of
-        -- Reached a success condition. (1)
-        Just (res, del) -> LoopPre del (prev :>>>: res)
+compTransform prev curr@(currL :***: currR) = case getPre currR of
+    Just (i, HRefl) -> LoopPre i (prev :>>>: (currL :***: Id))
+    Nothing -> rightSlide prev curr
+compTransform prev curr = rightSlide prev curr
+
+-- We use an equality proof here to persuade the compiler that a ~ b. We need
+-- this because we're replacing currL :: NoComp a b with Id :: NoComp a a.
+getPre :: NoComp a b -> Maybe (Val b, a :~~: b)
+getPre (Pre i) = Just (i, HRefl)
+getPre (a :***: b) = do
+    (l, HRefl) <- getPre a
+    (r, HRefl) <- getPre b
+    return (Pair l r, HRefl)
+getPre _ = Nothing
+
+rightSlide :: NoLoop (P a c) d -> NoComp d (P b c) -> ALP a b
+rightSlide prev (currL :***: currR) =
+    case prev of
         -- Use right sliding (loop (a >>> (b *** c)) = loop ((id *** c) >>> a >>> (b *** id))). (3)
         -- Sometimes we perform a _partial slide_ - see @partialSlide@ for details.
-        Nothing -> case prev of
-            WithoutComp (_ :***: prevR) -> transform $ partialSlide currL currR prevR prev
-            (_ :>>>: (_ :***: prevR)) -> transform $ partialSlide currL currR prevR prev
-            _ -> transform $ Loop $ ((id_ `par` lift_ currR) `comp` prev) `comp` (lift_ currL `par` id_)
--- Product rule then success. (2)
-compTransform prev (Pre (Pair i j)) = LoopPre j (prev :>>>: (Pre i :***: Id))
--- TODO: unsquish or weird rotate (NOTE my original thought was wrong, see example in notes)
--- TODO: rest of weird rotates
-compTransform prev Squish = undefined
--- Otherwise squish. (4)
-compTransform prev curr = transform $ doSquish (prev :>>>: curr)
+        -- TODO: possibly need to slide Assoc etc further into `prev` to avoid that being used.
+        WithoutComp (_ :***: prevR) -> transform $ partialSlide currL currR prevR prev
+        (_ :>>>: (_ :***: prevR)) -> transform $ partialSlide currL currR prevR prev
+        _ -> transform $ Loop $ ((id_ `par` lift_ currR) `comp` prev) `comp` (lift_ currL `par` id_)
+-- TODO Otherwise switch to left sliding. (4)
+rightSlide prev curr = undefined
 
-doSquish :: NoLoop (P a c) (P b c) -> ANF a b
-doSquish prog = Loop $ WithoutComp Squish `comp` (WithoutComp Id `par` prog)
+-- TODO: Consider whether Id should be limited to NoComp (V a) (V a) [probably not].
+-- Attempt to swap Assoc etc inwards. Returns Nothing if no change was made.
+-- Welcome to the pattern match from hell.
+attemptSwapRight :: NoComp a b -> NoComp b c -> Maybe (NoLoop a c)
+-- Assoc :: NoComp (P (P a b) c) (P a (P b c))
+attemptSwapRight ((i :***: j) :***: k) Assoc = Just $ lift_ Assoc `comp` (lift_ i `par` (lift_ j `par` lift_ k))
+attemptSwapRight (Id :***: k) Assoc = Just $ lift_ Assoc `comp` (id_ `par` (id_ `par` lift_ k))
+-- Cossa :: NoComp (P a (P b c)) (P (P a b) c)
+attemptSwapRight (i :***: (j :***: k)) Cossa = Just $ lift_ Cossa `comp` ((lift_ i `par` lift_ j) `par` lift_ k)
+attemptSwapRight (i :***: Id) Cossa = Just $ lift_ Cossa `comp` ((lift_ i `par` id_) `par` id_)
+-- Juggle :: NoComp (P (P a b) c) (P (P a c) b)
+attemptSwapRight ((i :***: j) :***: k) Juggle = Just $ lift_ Juggle `comp` ((lift_ i `par` lift_ k) `par` lift_ j)
+attemptSwapRight (Id :***: k) Juggle = Just $ lift_ Juggle `comp` ((id_ `par` lift_ k) `par` id_)
+-- Distribute :: NoComp (P (P a b) (P c d)) (P (P a c) (P b d))
+attemptSwapRight ((i :***: j) :***: (k :***: l)) Distribute = Just $ lift_ Distribute `comp` ((lift_ i `par` lift_ k) `par` (lift_ j `par` lift_ l))
+attemptSwapRight (Id :***: (k :***: l)) Distribute = Just $ lift_ Distribute `comp` ((id_ `par` lift_ k) `par` (id_ `par` lift_ l))
+attemptSwapRight ((i :***: j) :***: Id) Distribute = Just $ lift_ Distribute `comp` ((lift_ i `par` id_) `par` (lift_ j `par` id_))
+attemptSwapRight _ _ = Nothing
 
 -- This performs a _partial slide_. This means that we slide everything using right sliding,
 -- _except_ for any `pre` if they could be merged into the previous part of the program.
@@ -81,16 +107,3 @@ keepPres _ (Pre i) = C2 (Pre i) Id
 keepPres (a :***: b) (c :***: d) = compTwoPar (keepPres a c) (keepPres b d)
 -- Otherwise, drop the element (allow it to be rotated).
 keepPres _ x = C2 Id x
-
--- Check if the bottom right element is a Pre of some form.
-succeeded :: NoComp a b -> NoComp a' b' -> Maybe (NoComp (P a a') (P b b'), Val b')
-succeeded currL (Pre i) = Just (currL :***: Id, i)
-succeeded currL (a :***: b) = case isPre (a :***: b) of
-        Just (Pre i) -> Just (currL :***: Id, i)
-        _ -> Nothing
-    where
-        isPre :: NoComp a b -> Maybe (NoComp a b)
-        isPre (Pre i) = Just (Pre i)
-        isPre (a :***: b) = (:***:) <$> isPre a <*> isPre b
-        isPre _ = Nothing
-succeeded _ _ = Nothing

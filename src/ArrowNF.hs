@@ -27,13 +27,6 @@ comp (f :>>>: g) (WithoutComp h) = case compSimplify g h of
 comp (WithoutComp f) (g :>>>: h) = comp (comp (WithoutComp f) g) (WithoutComp h)
 comp (f :>>>: g) (h :>>>: i) = comp f $ comp (WithoutComp g) $ comp h (WithoutComp i)
 
--- @CompTwo@ represents exactly two composed terms.
--- This means we do not need to use `par` in `moveIdInwards` (which causes an
--- infinite loop) - we know that we are composing exactly two things so can
--- avoid calling the full version of `par`.
-data CompTwo a c where
-    C2 :: NoComp a b -> NoComp b c -> CompTwo a c
-
 compTwoCompose :: CompTwo a c -> NoLoop a c
 -- SIMPLIFICATION: Id >>> f ==> f <== f >>> Id
 -- This is partially covered in `compSimplify` but needs restating here as we
@@ -51,14 +44,15 @@ compSimplify f Id = WithoutComp f
 compSimplify Id f = WithoutComp f
 compSimplify f g = compTwoCompose $ moveIdInwards f g
 
+-- CompTwo means we do not need to use `par` here, which would cause an
+-- infinite loop - we know that we are composing exactly two things so can
+-- avoid calling the full version of `par`.
 moveIdInwards :: NoComp a b -> NoComp b c -> CompTwo a c
 -- SIMPLIFICATION: If we have Id in the right pair, but non-Id in the left,
 -- move that Id left.
 moveIdInwards f Id = C2 Id f
 moveIdInwards (a :***: b) (c :***: d) =
     compTwoPar (moveIdInwards a c) (moveIdInwards b d)
-moveIdInwards (Pre (Pair i j)) (c :***: d) =
-    moveIdInwards (Pre i :***: Pre j) (c :***: d)
 moveIdInwards f g = C2 f g
 
 par :: NoLoop a b -> NoLoop a' b' -> NoLoop (P a a') (P b b')
@@ -70,8 +64,6 @@ par (f :>>>: g) (h :>>>: i) = (f `par` h) `comp` WithoutComp (parSimplify g i)
 parSimplify :: NoComp a b -> NoComp a' b' -> NoComp (P a a') (P b b')
 -- SIMPLIFICATION: Id *** Id ==> Id
 parSimplify Id Id = Id
--- SIMPLIFICATION: Pre i *** Pre j ==> Pre (i,j)
-parSimplify (Pre i) (Pre j) = Pre (Pair i j)
 parSimplify f g = f :***: g
 
 -- THE ARROW API FOR ANF
