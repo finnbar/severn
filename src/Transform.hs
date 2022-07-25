@@ -3,6 +3,7 @@
 module Transform where
 
 import ArrowNF
+import NFReversed
 
 data ALP a b where
     LoopPre :: Val c -> NoLoop (P a c) (P b c) -> ALP a b
@@ -29,13 +30,15 @@ transform (Loop (WithoutComp f)) = case f of
         Nothing -> error "Cannot convert into loopPre."
     -- No rules can be applied.
     _ -> error "Cannot convert into loopPre."
-transform (Loop (prev :>>>: curr)) = compTransform prev curr
+transform (Loop (prev :>>>: curr)) = compTransformRight prev curr
 
-compTransform :: NoLoop (P a c) d -> NoComp d (P b c) -> ALP a b
-compTransform prev curr@(currL :***: currR) = case extractPre currR of
+compTransformRight :: NoLoop (P a c) d -> NoComp d (P b c) -> ALP a b
+-- Check if there is a pre in the bottom right - if so, replace it with Id
+-- and we're done.
+compTransformRight prev curr@(currL :***: currR) = case extractPre currR of
     Just (i, currR') -> LoopPre i (prev :>>>: (currL :***: currR'))
     Nothing -> rightSlide prev curr
-compTransform prev curr = rightSlide prev curr
+compTransformRight prev curr = rightSlide prev curr
 
 extractPre :: NoComp a b -> Maybe (Val b, NoComp a b)
 extractPre (Pre i) = Just (i, Id)
@@ -45,22 +48,41 @@ extractPre (a :***: b) = do
     return (Pair l r, Id)
 extractPre _ = Nothing
 
-rightSlide :: NoLoop (P a c) d -> NoComp d (P b c) -> ALP a b
+-- TODO: try and clean up this pattern matching.
+-- Do the `attemptSwapRight` first, even though it probably isn't always necessary.
+-- Then attempt to slide.
+-- Is there a way can move the partial sliding logic into a function?
+-- So rightSlide checks for attemptSwapRight and possibly moves onto leftSlide
+-- and then some helper actually performs the sliding.
+rightSlide :: forall a b c d. NoLoop (P a c) d -> NoComp d (P b c) -> ALP a b
 rightSlide prev (currL :***: currR) =
     case prev of
         -- Use right sliding (loop (a >>> (b *** c)) = loop ((id *** c) >>> a >>> (b *** id))). (3)
-        -- Sometimes we perform a _partial slide_ - see @partialSlide@ for details.
-        -- TODO: possibly need to slide Assoc etc further into `prev` to avoid that being used.
-        WithoutComp (_ :***: prevR) -> transform $ partialSlide currL currR prevR prev
-        (_ :>>>: (_ :***: prevR)) -> transform $ partialSlide currL currR prevR prev
-        _ -> transform $ Loop $ ((id_ `par` lift_ currR) `comp` prev) `comp` (lift_ currL `par` id_)
+        -- Sometimes we perform a _partial slide_ - see @partialRightSlide@ for details.
+        WithoutComp (_ :***: prevR) -> transform $ partialRightSlide currL currR prevR prev
+        (_ :>>>: (_ :***: prevR)) -> transform $ partialRightSlide currL currR prevR prev
+        -- If we don't have a :***:, first try `attemptSwapRight` to move Assoc etc outwards
+        ((rest :>>>: p) :>>>: prev') -> case attemptSwapRight p prev' of
+            Just c -> rightSlide (rest `comp` c) (currL :***: currR)
+            Nothing -> doSlide prev currL currR
+        (WithoutComp p :>>>: prev') -> case attemptSwapRight p prev' of
+            Just c -> rightSlide c (currL :***: currR)
+            _ -> doSlide prev currL currR
+        _ -> doSlide prev currL currR
+    where
+        doSlide :: NoLoop (P a c) (P e f) -> NoComp e b -> NoComp f c -> ALP a b
+        doSlide p cL cR = transform $ Loop $ ((id_ `par` lift_ cR) `comp` p) `comp` (lift_ cL `par` id_)
 -- TODO Otherwise switch to left sliding. (4)
-rightSlide prev curr = undefined
+rightSlide (prev :>>>: p) curr = case attemptSwapRight p curr of
+    Just c -> transform (Loop $ prev `comp` c)
+    Nothing -> undefined
+rightSlide (WithoutComp p) curr = case attemptSwapRight p curr of
+    Just c -> transform (Loop c)
+    Nothing -> undefined
 
--- TODO: Consider whether Id should be limited to NoComp (V a) (V a) [probably not].
 -- Attempt to swap Assoc etc inwards. Returns Nothing if no change was made.
--- Welcome to the pattern match from hell.
--- TODO: Also need to connect this into rest of program.
+-- TODO: Give Id the same treatment as Pre, so Id :: NoComp (V a) (V a)
+-- TODO: Try to make _routers_ which generalise Assoc etc. For now we'll stick with the combinators.
 attemptSwapRight :: NoComp a b -> NoComp b c -> Maybe (NoLoop a c)
 -- Assoc :: NoComp (P (P a b) c) (P a (P b c))
 attemptSwapRight ((i :***: j) :***: k) Assoc = Just $ lift_ Assoc `comp` (lift_ i `par` (lift_ j `par` lift_ k))
@@ -86,8 +108,8 @@ attemptSwapRight _ _ = Nothing
 -- second (first f) >>> ... >>> second (pre (v,v))
 -- To do this, we split the term we are about to slide (currR) into a part to slide (slide)
 -- and a part to not slide (noslide), and assemble the new Loop accordingly.
-partialSlide :: NoComp b c -> NoComp b' c' -> NoComp a' b' -> NoLoop (P a c') (P b b') -> ANF a c
-partialSlide currL currR prevR prev = case compTwoCompose $ keepPres prevR currR of
+partialRightSlide :: NoComp b c -> NoComp b' c' -> NoComp a' b' -> NoLoop (P a c') (P b b') -> ANF a c
+partialRightSlide currL currR prevR prev = case compTwoCompose $ keepPres prevR currR of
     WithoutComp currR' -> Loop $ ((id_ `par` lift_ currR') `comp` prev) `comp` (lift_ currL `par` id_)
     noslide :>>>: slide -> Loop $ ((id_ `par` lift_ slide) `comp` prev) `comp` (lift_ currL `par` noslide)
 
@@ -105,3 +127,21 @@ keepPres _ (Pre i) = C2 (Pre i) Id
 keepPres (a :***: b) (c :***: d) = compTwoPar (keepPres a c) (keepPres b d)
 -- Otherwise, drop the element (allow it to be rotated).
 keepPres _ x = C2 Id x
+
+compTransformLeft :: NoComp (P a c) d -> Reversed d (P b c) -> ALP a b
+-- To check if we've succeeded, we instead look for a pre in the bottom left
+-- and then perform one last rotation if so.
+compTransformLeft curr@(currL :***: currR) rest = case extractPre currR of
+    Just (i, currR') ->
+        LoopPre i (WithoutComp (currL :***: Id) `comp` 
+            reverseReversed rest :>>>:
+            (Id :***: currR'))
+    Nothing -> leftSlide curr rest
+compTransformLeft curr rest = leftSlide curr rest
+
+leftSlide :: NoComp (P a c) d -> Reversed d (P b c) -> ALP a b
+-- TODO: Implement this.
+-- Note that `rightSlide` performs recursive calls to `transform`, which we
+-- cannot do here. We might need a Loop container for Reversed.
+-- Probably try to simplify `rightSlide` first and go from there?
+leftSlide (currL :***: currR) rest = undefined
