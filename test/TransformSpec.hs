@@ -33,6 +33,7 @@ checkEqual (alp, sf) (ins, ins') =
         alpres = map removeDesc $ multiRun runALP alp ins
     in sfres === alpres
 
+-- This makes sure that `transform` leaves programs without loops entirely unaffected.
 prop_transform_noloop :: Property
 prop_transform_noloop = property $ do
     (ins, ins') <- forAll genPairVals
@@ -40,6 +41,7 @@ prop_transform_noloop = property $ do
     (anf, sf) <- forAllWith (show . fst) $ genPairProg len
     checkEqual (transform anf, sf) (ins, ins')
 
+-- This makes sure that `transform` leaves loops where the `pre` is already in the right place as-is.
 prop_transform_trivial :: Property
 prop_transform_trivial = property $ do
     (ins, ins') <- forAll genOneVals
@@ -48,6 +50,7 @@ prop_transform_trivial = property $ do
     (del, del') <- forAll genOneVal
     checkEqual (transform $ loop $ anf >>> second (pre del), A.loop $ sf A.>>> A.second (iPre del')) (ins, ins')
 
+-- This makes sure that simple right slides can be used to move the `pre` into position.
 prop_right_slide :: Property
 prop_right_slide = property $ do
     (ins, ins') <- forAll genOneVals
@@ -58,9 +61,51 @@ prop_right_slide = property $ do
     (del, del') <- forAll genOneVal
     checkEqual (transform $ loop $ anfmain >>> second (pre del >>> anftail), A.loop $ sfmain A.>>> A.second (iPre del' A.>>> sftail)) (ins, ins')
 
+mergeANF :: ANF (P (V Int) (V Int)) (V Int)
+mergeANF = arr $ \(Pair (One a) (One b)) -> One $ a + b
+
+splitANF :: ANF (V Int) (P (V Int) (V Int))
+splitANF = arr $ \(One a) -> Pair (One a) (One a)
+
+mergeSF :: SF (Int, Int) Int
+mergeSF = A.arr $ uncurry (+)
+
+splitSF :: SF Int (Int, Int)
+splitSF = A.arr $ \x -> (x,x)
+
+-- This makes sure that we are able to extract the correct value for a pre even
+-- when it is a pair - i.e. a loop ending in second (pre i *** pre j) correctly
+-- extracts (i,j).
+prop_pre_merge :: Property
+prop_pre_merge = property $ do
+    (ins, ins') <- forAll genOneVals
+    pairLen <- forAll $ Gen.integral (Range.linear 1 10)
+    singleLen <- forAll $ Gen.integral (Range.linear 1 2)
+    (anfmain, sfmain) <- forAllWith (show . fst) $ genPairProg pairLen
+    -- We turn this into the tail by using `second`
+    (anftail, sftail) <- forAllWith (show . fst) $ genPairProg singleLen
+    (del, del') <- forAll genPairVal
+    let anf = transform $ loop $ second mergeANF >>> anfmain >>> second (splitANF >>> pre del >>> anftail)
+        sf = A.loop $ A.second mergeSF A.>>> sfmain A.>>> A.second (splitSF A.>>> iPre del' A.>>> sftail)
+    checkEqual (anf, sf) (ins, ins')
+
+-- This makes sure that the right crush property is applied - i.e. if we have
+-- (a *** b) >>> (id *** c)
+-- we get
+-- (id *** b) >>> (a *** c) [and similar for a *** b >>> c *** id]
+prop_right_crush :: Property
+prop_right_crush = property $ do
+    (ins, ins') <- forAll genOneVals
+    pairLen <- forAll $ Gen.integral (Range.linear 1 10)
+    singleLen <- forAll $ Gen.integral (Range.linear 1 2)
+    (anfmain, sfmain) <- forAllWith (show . fst) $ genPairProg pairLen
+    (anftail, sftail) <- forAllWith (show . fst) $ genSingleProg singleLen
+    (crush, crush') <- forAllWith (show . fst) genCrushable
+    let anf = transform $ loop $ anfmain >>> second (splitANF >>> crush >>> mergeANF >>> anftail)
+        sf = A.loop $ sfmain A.>>> A.second (splitSF A.>>> crush' A.>>> mergeSF A.>>> sftail)
+    checkEqual (anf, sf) (ins, ins')
+
 -- TODO: A few more tests.
--- * A test requiring a larger pre, so second (pre (i,j))
--- * A test requiring right crush, so second (first pre >>> second pre)
 -- * (once implemented) a test requiring left slide (second pre >>> arr2)
 
 -- TODO: benchmarks! Compare a large SF vs its ALP version.

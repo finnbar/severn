@@ -87,3 +87,20 @@ genTrioProg :: Int ->
         SF ((Int, Int), Int) ((Int, Int), Int))
 genTrioProg 1 = genTrio
 genTrioProg n = bimapTwoGen (>>>) (A.>>>) genTrio $ genTrioProg (n-1)
+
+-- Gen some composition which can be crushed into a pre.
+genCrushable :: Gen (ANF (P (V Int) (V Int)) (P (V Int) (V Int)), SF (Int, Int) (Int, Int))
+genCrushable =
+    do
+        (a,a') <- genSingle
+        (i,i') <- genOneVal
+        (j,j') <- genOneVal
+        Gen.element [
+            -- (a *** pre j) >>> (pre i *** id)
+            ((a *** pre j) >>> first (pre i), (a' A.*** iPre j') A.>>> A.first (iPre i')),
+            -- (pre i *** a) >>> (id *** pre j)
+            ((pre i *** a) >>> second (pre j), (iPre i' A.*** a') A.>>> A.second (iPre j')),
+            -- first (pre i) >>> second (pre j)
+            (first (pre i) >>> second (pre j), A.first (iPre i') A.>>> A.second (iPre j')),
+            -- second (pre j) >>> first (pre i)
+            (second (pre j) >>> first (pre i), A.second (iPre j') A.>>> A.first (iPre i')) ]

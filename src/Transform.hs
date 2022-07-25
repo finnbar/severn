@@ -60,6 +60,7 @@ rightSlide prev curr = undefined
 -- TODO: Consider whether Id should be limited to NoComp (V a) (V a) [probably not].
 -- Attempt to swap Assoc etc inwards. Returns Nothing if no change was made.
 -- Welcome to the pattern match from hell.
+-- TODO: Also need to connect this into rest of program.
 attemptSwapRight :: NoComp a b -> NoComp b c -> Maybe (NoLoop a c)
 -- Assoc :: NoComp (P (P a b) c) (P a (P b c))
 attemptSwapRight ((i :***: j) :***: k) Assoc = Just $ lift_ Assoc `comp` (lift_ i `par` (lift_ j `par` lift_ k))
