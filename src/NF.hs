@@ -36,12 +36,18 @@ type NoComp :: forall s s'. Desc s -> Desc s' -> *
 data NoComp x y where
     (:***:) :: NoComp a b -> NoComp a' b' -> NoComp (P a a') (P b b')
     Arr :: (Val a -> Val b) -> NoComp a b
+    -- This forces Pre (Pair i j) to be represented as Pre i *** Pre j.
     Pre :: Val (V a) -> NoComp (V a) (V a)
+    -- NOTE: I've tried to split up Id like with Pre and it doesn't work. Type
+    -- erasure means that defining something that takes in no arguments means
+    -- it needs a context in order to determine how to proceed. And adding that
+    -- context means including it everywhere, which is hellish.
     Id :: NoComp a a
     Assoc :: NoComp (P (P a b) c) (P a (P b c))
     Cossa :: NoComp (P a (P b c)) (P (P a b) c)
     Juggle :: NoComp (P (P a b) c) (P (P a c) b)
     Distribute :: NoComp (P (P a b) (P c d)) (P (P a c) (P b d))
+    Squish :: NoComp (P a (P b c)) (P b (P a c))
 
 -- * Show instances
 
@@ -67,6 +73,7 @@ instance Show (NoComp a b) where
     show Cossa = "Cossa"
     show Juggle = "Juggle"
     show Distribute = "Distribute"
+    show Squish = "Squish"
 
 -- * Eq instances
 
@@ -123,3 +130,4 @@ runNoComp Cossa (Pair a (Pair b c)) = (Pair (Pair a b) c, Cossa)
 runNoComp Juggle (Pair (Pair a b) c) = (Pair (Pair a c) b, Juggle)
 runNoComp Distribute (Pair (Pair a b) (Pair c d)) =
     (Pair (Pair a c) (Pair b d), Distribute)
+runNoComp Squish (Pair a (Pair b c)) = (Pair b (Pair a c), Squish)
