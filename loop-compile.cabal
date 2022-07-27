@@ -28,7 +28,6 @@ library
       ArrowNF
       CCA
       NF
-      NFReversed
       Transform
   other-modules:
       Paths_loop_compile

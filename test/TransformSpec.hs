@@ -105,8 +105,31 @@ prop_right_crush = property $ do
         sf = A.loop $ sfmain A.>>> A.second (splitSF A.>>> crush' A.>>> mergeSF A.>>> sftail)
     checkEqual (anf, sf) (ins, ins')
 
--- TODO: A few more tests.
--- * (once implemented) a test requiring left slide (second pre >>> arr2)
+-- This makes sure that simple left slides can be used to move the `pre` into position.
+prop_left_slide :: Property
+prop_left_slide = property $ do
+    (ins, ins') <- forAll genOneVals
+    pairLen <- forAll $ Gen.integral (Range.linear 1 10)
+    singleLen <- forAll $ Gen.integral (Range.linear 1 5)
+    (anfmain, sfmain) <- forAllWith (show . fst) $ genPairProg pairLen
+    (anfhead, sfhead) <- forAllWith (show . fst) $ genSingleProg singleLen
+    (del, del') <- forAll genOneVal
+    checkEqual (transform $ loop $ second (anfhead >>> pre del) >>> anfmain, A.loop $ A.second (sfhead A.>>> iPre del') A.>>> sfmain) (ins, ins')
+
+-- Make sure transform works where a squish is required - i.e. a 2in 2out pre.
+prop_squish_required :: Property
+prop_squish_required = property $ do
+    (ins, ins') <- forAll genOneVals
+    leftLen <- forAll $ Gen.integral (Range.linear 1 3)
+    rightLen <- forAll $ Gen.integral (Range.linear 1 3)
+    (anfleft, sfleft) <- forAllWith (show . fst) $ genPairProg leftLen
+    (anfright, sfright) <- forAllWith (show . fst) $ genPairProg rightLen
+    (del, del') <- forAll genPairVal
+    checkEqual (transform $ loop $ anfleft >>> pre del >>> anfright, A.loop $ sfleft A.>>> iPre del' A.>>> sfright) (ins, ins')
+
+-- TODO: Loop in loop, where each loop has its own delay. This makes sure that our use of Assoc and Cossa doesn't break anything.
+-- TODO: tests for first (loop f) and others that require Distributive and Juggle.
+-- TODO: test where an inner loop acts as the pre for an outer loop
 
 -- TODO: benchmarks! Compare a large SF vs its ALP version.
 
