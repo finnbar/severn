@@ -79,8 +79,8 @@ extractPre (a :***: b) = do
 extractPre _ = Nothing
 
 rightSlide :: NoLoop d (P b c) -> NoLoop (P a c) d -> ALP a b
-rightSlide preS postS =
-    case swapCombinatorsInwards postS of
+rightSlide preS postS = traceShow (preS, postS) $
+    case traceShowId $ swapCombinatorsInwards postS of
         -- Notably, we _can_ slide further, but only one step further (have the
         -- Squish at the end), and there is no way for that to be a success.
         WithoutComp _ -> error "Cannot slide any further!"
@@ -103,12 +103,15 @@ doRightSlide preS postS@(pS :>>>: p') p =
         noslide :>>>: slide -> transform' (WithoutComp slide `comp` preS) (postS `comp` noslide)
 
 -- Push combinators (Assoc, Cossa, etc.) as far to the left as possible.
+-- NOTE: This does not work for some of the more complex examples, so needs reconsidering.
+-- (The partial slide may also need similar reconsideration.)
 swapCombinatorsInwards :: NoLoop a b -> NoLoop a b
 swapCombinatorsInwards (WithoutComp f) = WithoutComp f
 swapCombinatorsInwards i@(WithoutComp f :>>>: g) = fromMaybe i (trySwap f g)
 swapCombinatorsInwards i@((f :>>>: g) :>>>: h) = case trySwap g h of
     Just c -> swapCombinatorsInwards (f `comp` c)
-    Nothing -> swapCombinatorsInwards (f :>>>: g) :>>>: h
+    -- `comp` is used here to maintain invariants
+    Nothing -> swapCombinatorsInwards (f `comp` WithoutComp g) `comp` WithoutComp h
 
 -- Attempt to swap Assoc etc inwards. Returns Nothing if no change was made.
 -- TODO: Try to make _routers_ which generalise Assoc etc. For now we'll stick with the combinators.

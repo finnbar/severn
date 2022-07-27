@@ -50,16 +50,21 @@ prop_transform_trivial = property $ do
     (del, del') <- forAll genOneVal
     checkEqual (transform $ loop $ anf >>> second (pre del), A.loop $ sf A.>>> A.second (iPre del')) (ins, ins')
 
+makeRightSlider :: Gen (ANF (V Int) (V Int), SF Int Int)
+makeRightSlider = do
+    pairLen <- Gen.integral (Range.linear 1 10)
+    singleLen <- Gen.integral (Range.linear 1 5)
+    (anfmain, sfmain) <- genPairProg pairLen
+    (anftail, sftail) <- genSingleProg singleLen
+    (del, del') <- genOneVal
+    return (loop $ anfmain >>> second (pre del >>> anftail), A.loop $ sfmain A.>>> A.second (iPre del' A.>>> sftail))
+
 -- This makes sure that simple right slides can be used to move the `pre` into position.
 prop_right_slide :: Property
 prop_right_slide = property $ do
     (ins, ins') <- forAll genOneVals
-    pairLen <- forAll $ Gen.integral (Range.linear 1 10)
-    singleLen <- forAll $ Gen.integral (Range.linear 1 5)
-    (anfmain, sfmain) <- forAllWith (show . fst) $ genPairProg pairLen
-    (anftail, sftail) <- forAllWith (show . fst) $ genSingleProg singleLen
-    (del, del') <- forAll genOneVal
-    checkEqual (transform $ loop $ anfmain >>> second (pre del >>> anftail), A.loop $ sfmain A.>>> A.second (iPre del' A.>>> sftail)) (ins, ins')
+    (anf, sf) <- forAllWith (show . fst) makeRightSlider
+    checkEqual (transform anf, sf) (ins, ins')
 
 mergeANF :: ANF (P (V Int) (V Int)) (V Int)
 mergeANF = arr $ \(Pair (One a) (One b)) -> One $ a + b
@@ -89,6 +94,17 @@ prop_pre_merge = property $ do
         sf = A.loop $ A.second mergeSF A.>>> sfmain A.>>> A.second (splitSF A.>>> iPre del' A.>>> sftail)
     checkEqual (anf, sf) (ins, ins')
 
+makeRightCrusher :: Gen (ANF (V Int) (V Int), SF Int Int)
+makeRightCrusher = do
+    pairLen <- Gen.integral (Range.linear 1 10)
+    singleLen <- Gen.integral (Range.linear 1 2)
+    (anfmain, sfmain) <- genPairProg pairLen
+    (anftail, sftail) <- genSingleProg singleLen
+    (crush, crush') <- genCrushable
+    let anf = loop $ anfmain >>> second (splitANF >>> crush >>> mergeANF >>> anftail)
+        sf = A.loop $ sfmain A.>>> A.second (splitSF A.>>> crush' A.>>> mergeSF A.>>> sftail)
+    return (anf, sf)
+
 -- This makes sure that the right crush property is applied - i.e. if we have
 -- (a *** b) >>> (id *** c)
 -- we get
@@ -96,25 +112,24 @@ prop_pre_merge = property $ do
 prop_right_crush :: Property
 prop_right_crush = property $ do
     (ins, ins') <- forAll genOneVals
-    pairLen <- forAll $ Gen.integral (Range.linear 1 10)
-    singleLen <- forAll $ Gen.integral (Range.linear 1 2)
-    (anfmain, sfmain) <- forAllWith (show . fst) $ genPairProg pairLen
-    (anftail, sftail) <- forAllWith (show . fst) $ genSingleProg singleLen
-    (crush, crush') <- forAllWith (show . fst) genCrushable
-    let anf = transform $ loop $ anfmain >>> second (splitANF >>> crush >>> mergeANF >>> anftail)
-        sf = A.loop $ sfmain A.>>> A.second (splitSF A.>>> crush' A.>>> mergeSF A.>>> sftail)
-    checkEqual (anf, sf) (ins, ins')
+    (anf, sf) <- forAllWith (show . fst) makeRightCrusher
+    checkEqual (transform anf, sf) (ins, ins')
+
+makeLeftSlider :: Gen (ANF (V Int) (V Int), SF Int Int)
+makeLeftSlider = do
+    pairLen <- Gen.integral (Range.linear 1 10)
+    singleLen <- Gen.integral (Range.linear 1 5)
+    (anfmain, sfmain) <- genPairProg pairLen
+    (anfhead, sfhead) <- genSingleProg singleLen
+    (del, del') <- genOneVal
+    return (loop $ second (anfhead >>> pre del) >>> anfmain, A.loop $ A.second (sfhead A.>>> iPre del') A.>>> sfmain)
 
 -- This makes sure that simple left slides can be used to move the `pre` into position.
 prop_left_slide :: Property
 prop_left_slide = property $ do
     (ins, ins') <- forAll genOneVals
-    pairLen <- forAll $ Gen.integral (Range.linear 1 10)
-    singleLen <- forAll $ Gen.integral (Range.linear 1 5)
-    (anfmain, sfmain) <- forAllWith (show . fst) $ genPairProg pairLen
-    (anfhead, sfhead) <- forAllWith (show . fst) $ genSingleProg singleLen
-    (del, del') <- forAll genOneVal
-    checkEqual (transform $ loop $ second (anfhead >>> pre del) >>> anfmain, A.loop $ A.second (sfhead A.>>> iPre del') A.>>> sfmain) (ins, ins')
+    (anf, sf) <- forAllWith (show . fst) makeLeftSlider
+    checkEqual (transform anf, sf) (ins, ins')
 
 -- Make sure transform works where a squish is required - i.e. a 2in 2out pre.
 prop_squish_required :: Property
@@ -128,6 +143,23 @@ prop_squish_required = property $ do
     checkEqual (transform $ loop $ anfleft >>> pre del >>> anfright, A.loop $ sfleft A.>>> iPre del' A.>>> sfright) (ins, ins')
 
 -- TODO: Loop in loop, where each loop has its own delay. This makes sure that our use of Assoc and Cossa doesn't break anything.
+-- Both loops are solvable individually via right sliding.
+-- NOTE: It turns out that Assoc etc do break something...
+-- Also this test currently assumes that both loops are solvable via right sliding - we need a mix.
+prop_loop_in_loop :: Property
+prop_loop_in_loop = property $ do
+    (ins, ins') <- forAll genOneVals
+    (anfinner, sfinner) <- forAllWith (show . fst) makeRightSlider
+    len <- forAll $ Gen.integral (Range.linear 1 3)
+    len' <- forAll $ Gen.integral (Range.linear 1 3)
+    (anfextra, sfextra) <- forAllWith (show . fst) $ genSingleProg len
+    (anf, sf) <- forAllWith (show . fst) $ Gen.element [
+            (loop $ first anfinner >>> second (pre (One 0) >>> anfextra),
+                A.loop $ A.first sfinner A.>>> A.second (iPre 0 A.>>> sfextra))
+        ]
+    alp <- eval $ transform anf
+    checkEqual (alp, sf) (ins, ins')
+
 -- TODO: tests for first (loop f) and others that require Distributive and Juggle.
 -- TODO: test where an inner loop acts as the pre for an outer loop
 

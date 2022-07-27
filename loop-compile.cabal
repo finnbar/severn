@@ -28,6 +28,7 @@ library
       ArrowNF
       CCA
       NF
+      Scratchpad
       Transform
   other-modules:
       Paths_loop_compile

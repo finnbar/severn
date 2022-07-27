@@ -79,7 +79,7 @@ instance Show (NoComp a b) where
 
 -- This is an extremely dodgy Eq instance, but it does the job - our `show`
 -- correctly notes precedence. We do not compare Arrs and Pres (cannot determine
--- function equality, nor guarantee variable equality due to hdiden types
+-- function equality, nor guarantee variable equality due to hidden types
 -- within our GADTs), but everything else compares correctly.
 instance Eq (ANF a b) where
     f == f' = show f == show f'
