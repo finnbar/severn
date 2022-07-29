@@ -77,3 +77,22 @@ test-suite loop-compile-test
     , loop-compile
     , template-haskell
   default-language: Haskell2010
+
+benchmark bench-vs-yampa
+  type: exitcode-stdio-1.0
+  main-is: Bench.hs
+  other-modules:
+      ProgramGen
+      TestHelpers
+      Paths_loop_compile
+  hs-source-dirs:
+      benchmark
+  ghc-options: -O2 -threaded -rtsopts -with-rtsopts=-N
+  build-depends:
+      Yampa
+    , base >=4.7 && <5
+    , criterion
+    , hedgehog
+    , loop-compile
+    , template-haskell
+  default-language: Haskell2010

@@ -55,3 +55,18 @@ tests:
     - loop-compile
     - hedgehog
     - Yampa
+
+benchmarks:
+  bench-vs-yampa:
+    main:               Bench.hs
+    source-dirs:        benchmark
+    ghc-options:
+    - -O2
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    dependencies:
+    - loop-compile
+    - criterion
+    - hedgehog
+    - Yampa
