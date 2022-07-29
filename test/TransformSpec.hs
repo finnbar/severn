@@ -144,10 +144,9 @@ prop_squish_required = property $ do
 
 -- TODO: Loop in loop, where each loop has its own delay. This makes sure that our use of Assoc and Cossa doesn't break anything.
 -- Both loops are solvable individually via right sliding.
--- NOTE: It turns out that Assoc etc do break something...
 -- Also this test currently assumes that both loops are solvable via right sliding - we need a mix.
-prop_loop_in_loop :: Property
-prop_loop_in_loop = property $ do
+prop_loop_in_loop_right :: Property
+prop_loop_in_loop_right = property $ do
     (ins, ins') <- forAll genOneVals
     (anfinner, sfinner) <- forAllWith (show . fst) makeRightSlider
     len <- forAll $ Gen.integral (Range.linear 1 3)
@@ -160,8 +159,31 @@ prop_loop_in_loop = property $ do
     alp <- eval $ transform anf
     checkEqual (alp, sf) (ins, ins')
 
--- TODO: tests for first (loop f) and others that require Distributive and Juggle.
+prop_loop_in_loop_left :: Property
+prop_loop_in_loop_left = property $ do
+    (ins, ins') <- forAll genOneVals
+    (anfinner, sfinner) <- forAllWith (show . fst) makeLeftSlider
+    len <- forAll $ Gen.integral (Range.linear 1 3)
+    len' <- forAll $ Gen.integral (Range.linear 1 3)
+    (anfextra, sfextra) <- forAllWith (show . fst) $ genSingleProg len
+    (anf, sf) <- forAllWith (show . fst) $ Gen.element [
+            (loop $ second (anfextra >>> pre (One 0)) >>> first anfinner,
+                A.loop $ A.second (sfextra A.>>> iPre 0) A.>>> A.first sfinner)
+        ]
+    alp <- eval $ transform anf
+    checkEqual (alp, sf) (ins, ins')
+
 -- TODO: test where an inner loop acts as the pre for an outer loop
+-- TODO: tests for first (loop f) and others that require Distributive and Juggle.
+prop_pair_loop :: Property
+prop_pair_loop = property $ do
+    (ins, ins') <- forAll genPairVals
+    (anfleft, sfleft) <- forAllWith (show . fst) makeRightSlider
+    (anfright, sfright) <- forAllWith (show . fst) makeRightSlider
+    let anf = anfleft *** anfright
+        sf = sfleft A.*** sfright
+    alp <- eval $ transform anf
+    checkEqual (alp, sf) (ins, ins')
 
 -- TODO: benchmarks! Compare a large SF vs its ALP version.
 

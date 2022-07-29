@@ -32,10 +32,11 @@ transform (Loop f) = transform' (WithoutComp Id) f
 -- second preS >>> Squish >>> second postS
 -- but to avoid difficulties with pair types, we just work with preS and postS.
 transform' :: NoLoop d (P b c) -> NoLoop (P a c) d -> ALP a b
-transform' preS postS@(WithoutComp p) = fromMaybe (rightSlide preS postS) $
-    checkSuccess preS (WithoutComp Id) p
-transform' preS postS@(pS :>>>: p) = fromMaybe (rightSlide preS postS) $
-    checkSuccess preS pS p
+transform' preS postS = case {-traceShowId $-} swapCombinatorsInwards postS of
+    postS'@(WithoutComp p) -> fromMaybe (rightSlide preS postS') $
+        checkSuccess preS (WithoutComp Id) p
+    postS'@(pS :>>>: p) -> fromMaybe (rightSlide preS postS') $
+        checkSuccess preS pS p
 
 checkSuccess :: forall a b c d e.
     NoLoop d (P b c) -> NoLoop (P a c) e -> NoComp e d -> Maybe (ALP a b)
@@ -79,12 +80,8 @@ extractPre (a :***: b) = do
 extractPre _ = Nothing
 
 rightSlide :: NoLoop d (P b c) -> NoLoop (P a c) d -> ALP a b
-rightSlide preS postS = traceShow (preS, postS) $
-    case traceShowId $ swapCombinatorsInwards postS of
-        -- Notably, we _can_ slide further, but only one step further (have the
-        -- Squish at the end), and there is no way for that to be a success.
-        WithoutComp _ -> error "Cannot slide any further!"
-        (pS :>>>: p) -> doRightSlide preS pS p
+rightSlide preS (WithoutComp _) = error "Cannot slide any further!"
+rightSlide preS (pS :>>>: p) = doRightSlide preS pS p
 
 -- To perform a slide, we first attempt to split the tail of postS into two -
 -- noslide :>>>: slide.
@@ -103,38 +100,78 @@ doRightSlide preS postS@(pS :>>>: p') p =
         noslide :>>>: slide -> transform' (WithoutComp slide `comp` preS) (postS `comp` noslide)
 
 -- Push combinators (Assoc, Cossa, etc.) as far to the left as possible.
--- NOTE: This does not work for some of the more complex examples, so needs reconsidering.
--- (The partial slide may also need similar reconsideration.)
+-- TODO: This isn't entirely working.
+-- Also when a solution is left sliding, we have a whole host of other problems.
 swapCombinatorsInwards :: NoLoop a b -> NoLoop a b
-swapCombinatorsInwards (WithoutComp f) = WithoutComp f
-swapCombinatorsInwards i@(WithoutComp f :>>>: g) = fromMaybe i (trySwap f g)
-swapCombinatorsInwards i@((f :>>>: g) :>>>: h) = case trySwap g h of
-    Just c -> swapCombinatorsInwards (f `comp` c)
-    -- `comp` is used here to maintain invariants
-    Nothing -> swapCombinatorsInwards (f `comp` WithoutComp g) `comp` WithoutComp h
+swapCombinatorsInwards (WithoutComp nl) = WithoutComp nl
+swapCombinatorsInwards nl@(WithoutComp f :>>>: g) = case swapHelp nl of
+    (nl', True) -> swapCombinatorsInwards nl'
+    (nl', False) -> nl'
+swapCombinatorsInwards ((f :>>>: g) :>>>: h) = case swapHelp (swapCombinatorsInwards (f :>>>: g) :>>>: h) of
+    (nl', True) -> swapCombinatorsInwards nl'
+    (nl', False) -> nl'
 
--- Attempt to swap Assoc etc inwards. Returns Nothing if no change was made.
+-- The Bool represents whether any change has been made in this pass.
+swapHelp :: NoLoop a b -> (NoLoop a b, Bool)
+swapHelp (WithoutComp f) = (WithoutComp f, False)
+swapHelp (WithoutComp f :>>>: g) = case pullThrough f g of
+    Nothing -> (WithoutComp f `comp` WithoutComp g, False)
+    Just c -> (c, True)
+swapHelp ((f :>>>: g) :>>>: h) = case pullThrough g h of
+    Nothing -> let (fg, b) = swapHelp (f `comp` WithoutComp g) in (fg `comp` WithoutComp h, b)
+    Just (WithoutComp c) -> let (fg, _) = swapHelp f in (fg `comp` WithoutComp c, True)
+    Just (c :>>>: c') -> let (fg, _) = swapHelp (f `comp` c) in (fg `comp` WithoutComp c', True)
+
+-- @pullThrough@ attempts to pull parts of the program through a combinator like Assoc
+-- e.g. if we have (Arr2 :***: Pre) >>> Assoc, we can pull the Pre through:
+-- (Arr2 :***: Id) >>> Assoc >>> (Id :***: Pre)
+-- and then the new ending part can possibly be pulled through more combinators.
 -- TODO: Try to make _routers_ which generalise Assoc etc. For now we'll stick with the combinators.
--- If I do this, then I can split up Ids here to simplify pattern matching, rather
--- than trying to permanently split up Id.
-trySwap :: NoComp a b -> NoComp b c -> Maybe (NoLoop a c)
--- Assoc :: NoComp (P (P a b) c) (P a (P b c))
-trySwap ((i :***: j) :***: k) Assoc = Just $ lift_ Assoc `comp` (lift_ i `par` (lift_ j `par` lift_ k))
-trySwap (Id :***: k) Assoc = Just $ lift_ Assoc `comp` (id_ `par` (id_ `par` lift_ k))
--- Cossa :: NoComp (P a (P b c)) (P (P a b) c)
-trySwap (i :***: (j :***: k)) Cossa = Just $ lift_ Cossa `comp` ((lift_ i `par` lift_ j) `par` lift_ k)
-trySwap (i :***: Id) Cossa = Just $ lift_ Cossa `comp` ((lift_ i `par` id_) `par` id_)
--- Juggle :: NoComp (P (P a b) c) (P (P a c) b)
-trySwap ((i :***: j) :***: k) Juggle = Just $ lift_ Juggle `comp` ((lift_ i `par` lift_ k) `par` lift_ j)
-trySwap (Id :***: k) Juggle = Just $ lift_ Juggle `comp` ((id_ `par` lift_ k) `par` id_)
--- Distribute :: NoComp (P (P a b) (P c d)) (P (P a c) (P b d))
-trySwap ((i :***: j) :***: (k :***: l)) Distribute = Just $ lift_ Distribute `comp` ((lift_ i `par` lift_ k) `par` (lift_ j `par` lift_ l))
-trySwap (Id :***: (k :***: l)) Distribute = Just $ lift_ Distribute `comp` ((id_ `par` lift_ k) `par` (id_ `par` lift_ l))
-trySwap ((i :***: j) :***: Id) Distribute = Just $ lift_ Distribute `comp` ((lift_ i `par` id_) `par` (lift_ j `par` id_))
--- Squish :: NoComp (P a (P b c)) (P b (P a c))
-trySwap (i :***: (j :***: k)) Squish = Just $ lift_ Squish `comp` (lift_ j `par` (lift_ i `par` lift_ k))
-trySwap (i :***: Id) Squish = Just $ lift_ Squish `comp` (id_ `par` (lift_ i `par` id_))
-trySwap _ _ = Nothing
+pullThrough :: NoComp a b -> NoComp b c -> Maybe (NoLoop a c)
+pullThrough exp Assoc = pullThroughAssoc exp
+pullThrough exp Cossa = pullThroughCossa exp
+pullThrough exp Juggle = pullThroughJuggle exp
+pullThrough exp Distribute = pullThroughDistribute exp
+pullThrough exp Squish = pullThroughSquish exp
+pullThrough _ _ = Nothing
+
+pullThroughAssoc :: NoComp a (P (P d e) f) -> Maybe (NoLoop a (P d (P e f)))
+pullThroughAssoc ((i :***: j) :***: k) = Just $ lift_ Assoc `comp` (lift_ i `par` (lift_ j `par` lift_ k))
+pullThroughAssoc (Id :***: k) = Just $ lift_ Assoc `comp` (id_ `par` (id_ `par` lift_ k))
+-- This prevents an infinite loop in the next rule - since if you set k = Id, you get an identical result.
+pullThroughAssoc (x :***: Id) = Nothing
+pullThroughAssoc (x :***: k) = Just $ lift_ (x :***: Id) `comp` lift_ Assoc `comp` (id_ `par` (id_ `par` lift_ k))
+pullThroughAssoc _ = Nothing
+
+pullThroughCossa :: NoComp a (P d (P e f)) -> Maybe (NoLoop a (P (P d e) f))
+pullThroughCossa (i :***: (j :***: k)) = Just $ lift_ Cossa `comp` ((lift_ i `par` lift_ j) `par` lift_ k)
+pullThroughCossa (i :***: Id) = Just $ lift_ Cossa `comp` ((lift_ i `par` id_) `par` id_)
+-- Set i = Id in the next rule and you get an identical result.
+pullThroughCossa (Id :***: x) = Nothing
+pullThroughCossa (i :***: x) = Just $ lift_ (Id :***: x) `comp` lift_ Cossa `comp` ((lift_ i `par` id_) `par` id_)
+pullThroughCossa _ = Nothing
+
+pullThroughJuggle :: NoComp a (P (P d e) f) -> Maybe (NoLoop a (P (P d f) e))
+pullThroughJuggle ((i :***: j) :***: k) = Just $ lift_ Juggle `comp` ((lift_ i `par` lift_ k) `par` lift_ j)
+pullThroughJuggle (Id :***: k) = Just $ lift_ Juggle `comp` ((id_ `par` lift_ k) `par` id_)
+-- Set k = Id in the next rule and you get an identical result.
+pullThroughJuggle (x :***: Id) = Nothing
+pullThroughJuggle (x :***: k) = Just $ lift_ (x :***: Id) `comp` lift_ Juggle `comp` ((id_ `par` lift_ k) `par` id_)
+pullThroughJuggle _ = Nothing
+
+pullThroughDistribute :: NoComp a (P (P d e) (P f g)) -> Maybe (NoLoop a (P (P d f) (P e g)))
+pullThroughDistribute ((i :***: j) :***: (k :***: l)) = Just $ lift_ Distribute `comp` ((lift_ i `par` lift_ k) `par` (lift_ j `par` lift_ l))
+pullThroughDistribute (Id :***: (k :***: l)) = Just $ lift_ Distribute `comp` ((id_ `par` lift_ k) `par` (id_ `par` lift_ l))
+pullThroughDistribute ((i :***: j) :***: Id) = Just $ lift_ Distribute `comp` ((lift_ i `par` id_) `par` (lift_ j `par` id_))
+pullThroughDistribute _ = Nothing
+
+pullThroughSquish :: NoComp a (P d (P e f)) -> Maybe (NoLoop a (P e (P d f)))
+pullThroughSquish (i :***: (j :***: k)) = Just $ lift_ Squish `comp` (lift_ j `par` (lift_ i `par` lift_ k))
+pullThroughSquish (i :***: Id) = Just $ lift_ Squish `comp` (id_ `par` (lift_ i `par` id_))
+-- Set i = Id in the next rule and you get an identical result.
+pullThroughSquish (Id :***: x) = Nothing
+pullThroughSquish (i :***: x) = Just $ lift_ (Id :***: x) `comp` lift_ Squish `comp` (id_ `par` (lift_ i `par` id_))
+pullThroughSquish _ = Nothing
 
 -- This replaces a single NoComp with a composition of two parts:
 -- don't slide :>>>: slide
