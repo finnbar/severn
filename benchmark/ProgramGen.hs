@@ -1,4 +1,4 @@
-{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE DataKinds, GADTs #-}
 
 module ProgramGen where
 
@@ -20,3 +20,6 @@ makeLargeLoopsRight = do
 
 genInputSamples :: Int -> Gen ([Val (V Int)], [Int])
 genInputSamples i = unzip <$> Gen.list (Range.singleton i) genOneVal
+
+simplify :: Val (V Int) -> Int
+simplify (One x) = x
