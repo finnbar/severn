@@ -2,12 +2,14 @@
 
 module Main where
 
+-- RUN WITH
+-- stack build loop-compile:bench:bench-vs-yampa
+
 import Criterion
 import Criterion.Main
 import Hedgehog.Gen (sample)
 
 import FRP.Yampa
-import qualified Control.Arrow as A
 import Transform
 import ProgramGen
 import TestHelpers
