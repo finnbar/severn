@@ -26,18 +26,10 @@ runNoComp Distribute (Pair (Pair a b) (Pair c d)) =
     (Pair (Pair a c) (Pair b d), Distribute)
 runNoComp Squish (Pair a (Pair b c)) = (Pair b (Pair a c), Squish)
 
-data ALP a b where
-    LoopPre :: Val c -> NoLoop (P a c) (P b c) -> ALP a b
-    WithoutLoopPre :: NoLoop a b -> ALP a b
-
-runALP :: ALP a b -> Val a -> (Val b, ALP a b)
+runALP :: (ValidDesc a, ValidDesc b) => ALP a b -> Val a -> (Val b, ALP a b)
 runALP (WithoutLoopPre f) a =
     let (b, f') = runNoLoop f a
     in (b, WithoutLoopPre f')
 runALP (LoopPre i f) a =
     let (Pair b c, f') = runNoLoop f (Pair a i)
     in (b, LoopPre c f')
-
-instance Show (ALP a b) where
-    show (WithoutLoopPre f) = show f
-    show (LoopPre c f) = "LoopPre " ++ show f

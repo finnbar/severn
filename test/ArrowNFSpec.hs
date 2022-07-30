@@ -99,7 +99,7 @@ prop_loop_superposing :: Property
 prop_loop_superposing = property $ do
     len <- forAll $ Gen.integral (Range.linear 1 20)
     f <- forAll $ fst <$> genTrioProg len
-    second (loop f) ===
+    (second (loop f) :: ANF (P (P (V Int) (V Int)) (P (V Int) (V Int))) ((P (P (V Int) (V Int)) (P (V Int) (V Int))))) ===
         loop (WithoutLoop (lift_ Assoc) >>> second f >>> WithoutLoop (lift_ Cossa))
 
 arrowNFSpec :: Group

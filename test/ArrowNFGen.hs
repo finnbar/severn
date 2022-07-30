@@ -108,7 +108,7 @@ instance GenCrunchTrees ('V Int) where
                 return ((id, rhs), (id, rhs))
         ]
 
-instance forall a b. (GenCrunchTrees a, GenCrunchTrees b)
+instance forall a b. (GenCrunchTrees a, GenCrunchTrees b, ValidDesc a, ValidDesc b)
     => GenCrunchTrees ('P a b) where
     genCrunchTrees _ = do
         ((lt, rt), (lt', rt')) <- genCrunchTrees (Proxy :: Proxy a)
