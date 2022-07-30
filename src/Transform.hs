@@ -3,25 +3,10 @@
 module Transform where
 
 import ArrowNF
+import Run
 import Data.Maybe (fromMaybe)
 import Control.Applicative (Alternative((<|>)))
 import Debug.Trace
-
-data ALP a b where
-    LoopPre :: Val c -> NoLoop (P a c) (P b c) -> ALP a b
-    WithoutLoopPre :: NoLoop a b -> ALP a b
-
-runALP :: ALP a b -> Val a -> (Val b, ALP a b)
-runALP (WithoutLoopPre f) a =
-    let (b, f') = runNoLoop f a
-    in (b, WithoutLoopPre f')
-runALP (LoopPre i f) a =
-    let (Pair b c, f') = runNoLoop f (Pair a i)
-    in (b, LoopPre c f')
-
-instance Show (ALP a b) where
-    show (WithoutLoopPre f) = show f
-    show (LoopPre c f) = "LoopPre " ++ show f
 
 transform :: ANF a b -> ALP a b
 transform (WithoutLoop f) = WithoutLoopPre f
@@ -98,6 +83,30 @@ doRightSlide preS postS@(pS :>>>: p') p =
     case compTwoCompose $ keepPres p' p of
         WithoutComp slide -> transform' (WithoutComp slide `comp` preS) postS
         noslide :>>>: slide -> transform' (WithoutComp slide `comp` preS) (postS `comp` noslide)
+
+-- Extended algorithm, in an attempt to correctly solve without worry.
+-- NOTE: if we ever slide something large across, we know that we can no longer get left unsquish -
+-- therefore we can aim to slide combinators across.
+-- See my notes - I expect we probably need to simplify rather than trying to solve in one pass.
+doRightSlide' :: NoLoop d (P b c) -> NoLoop (P a c) e -> NoComp e d -> ALP a b
+doRightSlide' preS postS p = if not $ hasPre p then
+    -- If there is no Pre within p, then slide as normal - we have nothing to lose.
+    transform' (WithoutComp p `comp` preS) postS
+    -- If there is a Pre, then we have to try and keep it around.
+    -- First, try to split p into a part containing Pres, and a part containing non-Pres.
+    -- If we can do that, then slide the non-Pre part.
+    else case separatePre postS p of
+        noslide :>>>: slide -> transform' (WithoutComp slide `comp` preS) (postS `comp` noslide)
+        WithoutComp p' -> undefined
+
+hasPre :: NoComp a b -> Bool
+hasPre (Pre i) = True
+hasPre (a :***: b) = hasPre a || hasPre b
+hasPre _ = False
+
+separatePre :: NoLoop a b -> NoComp b c -> NoLoop b c
+separatePre (WithoutComp p') p = compTwoCompose $ keepPres p' p
+separatePre (xs :>>>: p') p = compTwoCompose $ keepPres p' p
 
 -- Push combinators (Assoc, Cossa, etc.) as far to the left as possible.
 -- TODO: This isn't entirely working.

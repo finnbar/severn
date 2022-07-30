@@ -28,6 +28,7 @@ library
       ArrowNF
       CCA
       NF
+      Run
       Scratchpad
       Transform
   other-modules:

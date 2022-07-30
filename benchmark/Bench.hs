@@ -13,6 +13,7 @@ import FRP.Yampa
 import Transform
 import ProgramGen
 import TestHelpers
+import Run
 
 -- TODO: These tests are too small to give meaningful results. Increase something.
 main :: IO ()

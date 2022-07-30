@@ -10,6 +10,7 @@ import qualified Hedgehog.Range as Range
 import ArrowNF
 import Transform
 import TestHelpers
+import Run
 
 import FRP.Yampa (deltaEncode, embed, SF, iPre)
 import qualified Control.Arrow as A
