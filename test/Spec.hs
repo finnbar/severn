@@ -1,3 +1,5 @@
+{-# LANGUAGE BangPatterns #-}
+
 import Hedgehog
 
 import ArrowNFSpec
@@ -8,5 +10,5 @@ import Control.Monad
 
 main :: IO ()
 main = do
-    res <- and <$> mapM checkSequential [arrowNFSpec, transformSpec]
-    unless res exitFailure
+    !res <- mapM checkSequential [arrowNFSpec, transformSpec]
+    unless (and res) exitFailure
