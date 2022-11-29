@@ -1,60 +1,31 @@
-{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE FlexibleContexts #-}
 
-module Transform where
+module TransformRight where
 
 import ArrowNF
-import Data.Maybe (fromMaybe)
-import Control.Applicative (Alternative((<|>)))
-import Debug.Trace
 
-transform :: (ValidDesc a, ValidDesc b) => ANF a b -> ALP a b
-transform (WithoutLoop f) = WithoutLoopPre f
-transform (Loop f) = transform' (WithoutComp Id) f
+import Control.Applicative ((<|>))
 
--- This _simulates_ a Squish between the two arguments - aka the network we
--- work with is actually:
--- second preS >>> Squish >>> second postS
--- but to avoid difficulties with pair types, we just work with preS and postS.
-transform' :: (ValidDesc a, ValidDesc b, ValidDesc c, ValidDesc d) => NoLoop d (P b c) -> NoLoop (P a c) d -> ALP a b
-transform' preS postS = case {-traceShowId $-} swapCombinatorsInwards postS of
-    postS'@(WithoutComp p) -> fromMaybe (rightSlide preS postS') $
-        checkSuccess preS (WithoutComp Id) p
-    postS'@(pS :>>>: p) -> fromMaybe (rightSlide preS postS') $
-        checkSuccess preS pS p
+-- Code for transforming loops solvable with right sliding.
 
-checkSuccess :: forall a b c d e. (ValidDesc a, ValidDesc b, ValidDesc c, ValidDesc d, ValidDesc e) =>
-    NoLoop d (P b c) -> NoLoop (P a c) e -> NoComp e d -> Maybe (ALP a b)
-checkSuccess preS postS p = fullPre p <|> leftUnsquish p <|> rightUnsquish p
-    where
-        fullPre :: NoComp e d -> Maybe (ALP a b)
-        fullPre p = do
-            (i, p') <- extractPre p
-            return $
-                LoopPre i $ ((id_ `par` preS) :>>>: Squish) `comp` (id_ `par` (postS :>>>: p'))
-        leftUnsquish :: NoComp e d -> Maybe (ALP a b)
-        leftUnsquish (x :***: p) = do
-            (i, p') <- extractPre p
-            (postSL, postSR) <- unpar postS
-            return $
-                LoopPre i $ ((postSL :>>>: x) `par` id_) `comp` preS `comp` (id_ `par` (postSR :>>>: p'))
-        leftUnsquish _ = Nothing
-        rightUnsquish :: NoComp e d -> Maybe (ALP a b)
-        rightUnsquish (x :***: p) = do
-            (i, p') <- extractPre p
-            (preSL, preSR) <- unpar preS
-            return $
-                LoopPre i $ (id_ `par` preSR) `comp` postS `comp` ((WithoutComp x `comp` preSL) `par` WithoutComp p')
-        rightUnsquish _ = Nothing
+-- TODO: am I certain that there's no nice way to do this with squash only?
+-- Is there some kind of way to unslide stuff if we've got a pre in the right place?
+-- That being said, this needs to be explainable.
 
--- TODO: could we make this somehow go through combinators?
-unpar :: (ValidDesc a, ValidDesc b) => NoLoop (P a b) (P c d) -> Maybe (NoLoop a c, NoLoop b d)
-unpar (WithoutComp (x :***: y)) = Just (WithoutComp x, WithoutComp y)
-unpar (WithoutComp Id) = Just (WithoutComp Id, WithoutComp Id)
-unpar (f :>>>: (x :***: y)) = do
-    (l, r) <- unpar f
-    return (l :>>>: x, r :>>>: y)
-unpar (f :>>>: Id) = unpar f
-unpar _ = Nothing
+-- TODO: add combinator stuff and right crunch up here.
+transformRight :: (ValidDesc a, ValidDesc b, ValidDesc c, ValidDesc d) =>
+    NoLoop (P a c) d -> NoLoop d (P b c) -> Maybe (ALP a b)
+transformRight preS (WithoutComp p) = checkSuccess preS id_ p
+transformRight preS (postS :>>>: p) =
+    checkSuccess preS postS p <|> rightSlide preS postS p
+
+checkSuccess :: (ValidDesc a, ValidDesc d) =>
+    NoLoop (P a c) d -> NoLoop d e -> NoComp e (P b c) -> Maybe (ALP a b)
+checkSuccess preS postS (x :***: p) = do
+    (i, p') <- extractPre p
+    return $
+        LoopPre i $ preS `comp` (postS :>>>: (x :***: p'))
+checkSuccess _ _ _ = Nothing
 
 extractPre :: NoComp a b -> Maybe (Val b, NoComp a b)
 extractPre (Pre i) = Just (i, Id)
@@ -64,45 +35,21 @@ extractPre (a :***: b) = do
     return (Pair l r, Id)
 extractPre _ = Nothing
 
-rightSlide :: (ValidDesc a, ValidDesc b, ValidDesc c, ValidDesc d) => NoLoop d (P b c) -> NoLoop (P a c) d -> ALP a b
-rightSlide preS (WithoutComp _) = error "Cannot slide any further!"
-rightSlide preS (pS :>>>: p) = doRightSlide preS pS p
+rightSlide :: (ValidDesc a, ValidDesc b, ValidDesc c, ValidDesc d) =>
+    NoLoop (P a c) d -> NoLoop d e -> NoComp e (P b c) -> Maybe (ALP a b)
+rightSlide preS postS (p :***: s) =
+    case postS of
+        WithoutComp (psl :***: psr) -> partialSlide preS (WithoutComp Id) psl psr p s
+        (pS :>>>: (psl :***: psr)) -> partialSlide preS pS psl psr p s
+        _ -> transformRight (WithoutComp (Id :***: s) `comp` preS) (postS `comp` WithoutComp (p :***: Id))
+rightSlide _ _ _ = Nothing
 
--- To perform a slide, we first attempt to split the tail of postS into two -
--- noslide :>>>: slide.
--- This is necessary for the following transformation:
--- ... >>> (pre v *** id) >>> (f *** pre v) ==> (f *** id) >>> ... >>> (pre v *** pre v)
--- which may be necessary to reach a success condition.
--- Once we've done that, we move `slide` into `preS` and keep `noslide` around.
-doRightSlide :: (ValidDesc a, ValidDesc b, ValidDesc c, ValidDesc d, ValidDesc e) => NoLoop d (P b c) -> NoLoop (P a c) e -> NoComp e d -> ALP a b
-doRightSlide preS postS@(WithoutComp p') p =
-    case compTwoCompose $ keepPres p' p of
-        WithoutComp slide -> transform' (WithoutComp slide `comp` preS) postS
-        noslide :>>>: slide -> transform' (WithoutComp slide `comp` preS) (postS `comp` noslide)
-doRightSlide preS postS@(pS :>>>: p') p =
-    case compTwoCompose $ keepPres p' p of
-        WithoutComp slide -> transform' (WithoutComp slide `comp` preS) postS
-        noslide :>>>: slide -> transform' (WithoutComp slide `comp` preS) (postS `comp` noslide)
-
--- Extended algorithm, in an attempt to correctly solve without worry.
--- NOTE: if we ever slide something large across, we know that we can no longer get left unsquish -
--- therefore we can aim to slide combinators across.
--- See my notes - I expect we probably need to simplify rather than trying to solve in one pass.
-doRightSlide' :: (ValidDesc a, ValidDesc b, ValidDesc c, ValidDesc d, ValidDesc e) => NoLoop d (P b c) -> NoLoop (P a c) e -> NoComp e d -> ALP a b
-doRightSlide' preS postS p = if not $ hasPre p then
-    -- If there is no Pre within p, then slide as normal - we have nothing to lose.
-    transform' (WithoutComp p `comp` preS) postS
-    -- If there is a Pre, then we have to try and keep it around.
-    -- First, try to split p into a part containing Pres, and a part containing non-Pres.
-    -- If we can do that, then slide the non-Pre part.
-    else case separatePre postS p of
-        noslide :>>>: slide -> transform' (WithoutComp slide `comp` preS) (postS `comp` noslide)
-        WithoutComp p' -> undefined
-
-hasPre :: NoComp a b -> Bool
-hasPre (Pre i) = True
-hasPre (a :***: b) = hasPre a || hasPre b
-hasPre _ = False
+partialSlide :: (ValidDesc a, ValidDesc b, ValidDesc c, ValidDesc d, ValidDesc e, ValidDesc f, ValidDesc g, ValidDesc h) =>
+    NoLoop (P a c) d -> NoLoop d (P e f) ->
+    NoComp e g -> NoComp f h -> NoComp g b -> NoComp h c -> Maybe (ALP a b)
+partialSlide preS pS psl psr p s = case compTwoCompose $ keepPres psr s of
+    noslide :>>>: slide -> transformRight ((id_ `par` WithoutComp slide) `comp` preS) (pS `comp` WithoutComp (psl :***: psr) `comp` (WithoutComp p `par` noslide))
+    WithoutComp slide -> transformRight ((id_ `par` WithoutComp slide) `comp` preS) (pS `comp` WithoutComp (psl :***: psr) `comp` (WithoutComp p `par` id_))
 
 separatePre :: (ValidDesc b, ValidDesc c) => NoLoop a b -> NoComp b c -> NoLoop b c
 separatePre (WithoutComp p') p = compTwoCompose $ keepPres p' p
@@ -179,6 +126,7 @@ pullThroughSquish (i :***: Id) = Just $ lift_ Squish `comp` (id_ `par` (lift_ i 
 pullThroughSquish (Id :***: x) = Nothing
 pullThroughSquish (i :***: x) = Just $ lift_ (Id :***: x) `comp` lift_ Squish `comp` (id_ `par` (lift_ i `par` id_))
 pullThroughSquish _ = Nothing
+
 
 -- This replaces a single NoComp with a composition of two parts:
 -- don't slide :>>>: slide
