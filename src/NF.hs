@@ -20,7 +20,7 @@ data Desc x where
 type Val :: forall s. Desc s -> *
 data Val x where
     One :: a -> Val (V a)
-    Pair :: (ValidDesc a, ValidDesc b) => Val a -> Val b -> Val (P a b)
+    Pair :: Val a -> Val b -> Val (P a b)
 
 class ValidDesc a where
     emptyVal :: Proxy a -> Val a
@@ -34,43 +34,73 @@ instance (ValidDesc a, ValidDesc b) => ValidDesc (P a b) where
     emptyVal Proxy = Pair (emptyVal (Proxy :: Proxy a)) $ emptyVal (Proxy :: Proxy b)
     generateId Proxy = generateId (Proxy :: Proxy a) :***: generateId (Proxy :: Proxy b)
 
+-- ArrowNormalForm, so we force >>> to be at the top level of each loop.
+infixl 1 :>>>:
 type ANF :: forall s s'. Desc s -> Desc s' -> *
 data ANF x y where
-    Loop :: ValidDesc c => NoLoop (P a c) (P b c) -> ANF a b
-    WithoutLoop :: NoLoop a b -> ANF a b
-
-infixl 1 :>>>:
-type NoLoop :: forall s s'. Desc s -> Desc s' -> *
-data NoLoop x y where
-    (:>>>:) :: (ValidDesc b, ValidDesc c) => NoLoop a b -> NoComp b c -> NoLoop a c
-    WithoutComp :: NoComp a b -> NoLoop a b
+    (:>>>:) :: ANF a b -> ANF b c -> ANF a c
+    Single :: NoComp a b -> ANF a b
 
 -- @CompTwo@ represents exactly two composed terms.
 -- This is used to avoid some awkward pattern matching.
 data CompTwo a c where
-    C2 :: (ValidDesc b, ValidDesc c) => NoComp a b -> NoComp b c -> CompTwo a c
+    C2 :: NoComp a b -> NoComp b c -> CompTwo a c
+
+data HeadTail a c where
+    HT :: NoComp a b -> ANF b c -> HeadTail a c
+data InitLast a c where
+    IL :: ANF a b -> NoComp b c -> InitLast a c
+
+headTail :: ANF a b -> HeadTail a b
+headTail (Single a) = HT a (Single Id)
+headTail (Single a :>>>: b) = HT a b
+headTail (a :>>>: b) = htCompose (headTail a) b
+    where
+        htCompose :: HeadTail a x -> ANF x b -> HeadTail a b
+        htCompose (HT ah at) b = HT ah (at :>>>: b)
+
+initLast :: ANF a b -> InitLast a b
+initLast (Single a) = IL (Single Id) a
+initLast (a :>>>: Single b) = IL a b
+initLast (a :>>>: b) = ilCompose a (initLast b)
+    where
+        ilCompose :: ANF a x -> InitLast x b -> InitLast a b
+        ilCompose a (IL bi bl) = IL (a :>>>: bi) bl
 
 infixl 3 :***:
 type NoComp :: forall s s'. Desc s -> Desc s' -> *
 data NoComp x y where
-    (:***:) :: (ValidDesc a, ValidDesc a', ValidDesc b, ValidDesc b') => NoComp a b -> NoComp a' b' -> NoComp (P a a') (P b b')
-    Arr :: ValidDesc b => (Val a -> Val b) -> NoComp a b
+    Loop :: ANF (P a c) (P b c) -> NoComp a b
+    (:***:) :: NoComp a b -> NoComp a' b' -> NoComp (P a a') (P b b')
+    Arr :: (Val a -> Val b) -> NoComp a b
     -- This forces Pre (Pair i j) to be represented as Pre i *** Pre j.
     Pre :: Val (V (a :: *)) -> NoComp (V a) (V a)
     -- NOTE: I've tried to split up Id like with Pre and it doesn't work. Type
     -- erasure means that defining something that takes in no arguments means
     -- it needs a context in order to determine how to proceed. And adding that
     -- context means including it everywhere, which is hellish.
-    Id :: ValidDesc a => NoComp a a
-    Assoc :: (ValidDesc a, ValidDesc b) => NoComp (P (P a b) c) (P a (P b c))
-    Cossa :: (ValidDesc a, ValidDesc b, ValidDesc c) => NoComp (P a (P b c)) (P (P a b) c)
-    Juggle :: (ValidDesc a, ValidDesc b) => NoComp (P (P a b) c) (P (P a c) b)
-    Distribute :: (ValidDesc a, ValidDesc b, ValidDesc c, ValidDesc d) => NoComp (P (P a b) (P c d)) (P (P a c) (P b d))
-    Squish :: (ValidDesc a, ValidDesc b, ValidDesc c) => NoComp (P a (P b c)) (P b (P a c))
+    Id :: NoComp a a
 
+-- ArrowLoopPre, which replaces Loop with LoopD and LoopM, and introduces
+-- decoupled signal functions.
+type ALP :: forall s s'. Desc s -> Desc s' -> *
 data ALP a b where
-    LoopPre :: ValidDesc c => Val c -> NoLoop (P a c) (P b c) -> ALP a b
-    WithoutLoopPre :: NoLoop a b -> ALP a b
+    (:>>>>:) :: ALP a b -> ALP b c -> ALP a c
+    Sing :: NoComp' a b -> ALP a b
+
+type NoComp' :: forall s s'. Desc s -> Desc s' -> *
+data NoComp' a b where
+    LoopD :: ALP (P a c) (P b d) -> Decoupled d c -> NoComp' a b
+    (:****:) :: NoComp' a b -> NoComp' a' b' -> NoComp' (P a a') (P b b')
+    Arr' :: (Val a -> Val b) -> NoComp' a b
+    Id' :: NoComp' a a
+    Dec :: Decoupled a b -> NoComp' a b
+
+type Decoupled :: forall s s'. Desc s -> Desc s' -> *
+data Decoupled a b where
+    BothDec :: Decoupled a b -> Decoupled a' b' -> Decoupled (P a a') (P b b')
+    LoopM :: ALP (P a c) d -> Decoupled d e -> ALP e (P b c) -> Decoupled a b
+    Pre' :: Val (V (a :: *)) -> Decoupled (V a) (V a)
 
 -- * Show instances
 
@@ -80,27 +110,31 @@ instance (Show (Val a), Show (Val b)) => Show (Val (P a b)) where
     show (Pair a b) = "[|" ++ show a ++ ", " ++ show b ++ "|]"
 
 instance Show (ANF a b) where
-    show (Loop f) = "Loop " ++ show f
-    show (WithoutLoop f) = show f
-
-instance Show (NoLoop a b) where
     show (f :>>>: g) = "(" ++ show f ++ " >>> " ++ show g ++ ")"
-    show (WithoutComp f) = show f
+    show (Single f) = show f
 
 instance Show (NoComp a b) where
+    show (Loop f) = "Loop (" ++ show f ++ ")"
     show (f :***: g) = "(" ++ show f ++ " *** " ++ show g ++ ")"
     show (Arr f) = "Arr"
     show (Pre a) = "Pre"
     show Id = "Id"
-    show Assoc = "Assoc"
-    show Cossa = "Cossa"
-    show Juggle = "Juggle"
-    show Distribute = "Distribute"
-    show Squish = "Squish"
 
 instance Show (ALP a b) where
-    show (WithoutLoopPre f) = show f
-    show (LoopPre c f) = "LoopPre " ++ show f
+    show (f :>>>>: g) = "(" ++ show f ++ " >>> " ++ show g ++ ")"
+    show (Sing f) = show f
+
+instance Show (NoComp' a b) where
+    show (LoopD f dec) = "LoopD (" ++ show f ++ ") (" ++ show dec ++ ")"
+    show (f :****: g) = "(" ++ show f ++ " *** " ++ show g ++ ")"
+    show (Arr' f) = "Arr"
+    show Id' = "Id"
+    show (Dec f) = show f
+
+instance Show (Decoupled a b) where
+    show (BothDec f g) = "(" ++ show f ++ " *** " ++ show g ++ ")"
+    show (LoopM f d g) = "LoopM (" ++ show f ++ ") (" ++ show d ++ ") (" ++ show g ++ ")"
+    show (Pre' v) = "Pre"
 
 -- * Eq instances
 
@@ -119,18 +153,18 @@ instance (Eq (Val a), Eq (Val b)) => Eq (Val (P a b)) where
 
 -- Helper lift functions
 
-lift_ :: NoComp a b -> NoLoop a b
-lift_ = WithoutComp
+lift_ :: NoComp a b -> ANF a b
+lift_ = Single
 
-arr_ :: ValidDesc b => (Val a -> Val b) -> NoLoop a b
-arr_ = WithoutComp . Arr
+arr_ :: (Val a -> Val b) -> ANF a b
+arr_ = Single . Arr
 
-id_ :: ValidDesc a => NoLoop a a
-id_ = WithoutComp Id
+id_ :: ANF a a
+id_ = Single Id
 
-pre_ :: ValidDesc a => Val a -> NoLoop a a
-pre_ = WithoutComp . preHelp
+pre_ :: Val a -> ANF a a
+pre_ = Single . preHelp
     where
-        preHelp :: ValidDesc a => Val a -> NoComp a a
+        preHelp :: Val a -> NoComp a a
         preHelp (One a) = Pre (One a)
         preHelp (Pair a b) = preHelp a :***: preHelp b
