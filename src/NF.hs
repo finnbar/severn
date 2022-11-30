@@ -20,7 +20,7 @@ data Desc x where
 type Val :: forall s. Desc s -> *
 data Val x where
     One :: a -> Val (V a)
-    Pair :: Val a -> Val b -> Val (P a b)
+    Pair :: (ValidDesc a, ValidDesc b) => Val a -> Val b -> Val (P a b)
 
 class ValidDesc a where
     emptyVal :: Proxy a -> Val a
@@ -38,69 +38,65 @@ instance (ValidDesc a, ValidDesc b) => ValidDesc (P a b) where
 infixl 1 :>>>:
 type ANF :: forall s s'. Desc s -> Desc s' -> *
 data ANF x y where
-    (:>>>:) :: ANF a b -> ANF b c -> ANF a c
-    Single :: NoComp a b -> ANF a b
+    (:>>>:) :: (ValidDesc a, ValidDesc b, ValidDesc c) =>
+        ANF a b -> ANF b c -> ANF a c
+    Single :: (ValidDesc a, ValidDesc b) =>
+        NoComp a b -> ANF a b
 
 -- @CompTwo@ represents exactly two composed terms.
 -- This is used to avoid some awkward pattern matching.
 data CompTwo a c where
     C2 :: NoComp a b -> NoComp b c -> CompTwo a c
 
-data HeadTail a c where
-    HT :: NoComp a b -> ANF b c -> HeadTail a c
-data InitLast a c where
-    IL :: ANF a b -> NoComp b c -> InitLast a c
-
-headTail :: ANF a b -> HeadTail a b
-headTail (Single a) = HT a (Single Id)
-headTail (Single a :>>>: b) = HT a b
-headTail (a :>>>: b) = htCompose (headTail a) b
-    where
-        htCompose :: HeadTail a x -> ANF x b -> HeadTail a b
-        htCompose (HT ah at) b = HT ah (at :>>>: b)
-
-initLast :: ANF a b -> InitLast a b
-initLast (Single a) = IL (Single Id) a
-initLast (a :>>>: Single b) = IL a b
-initLast (a :>>>: b) = ilCompose a (initLast b)
-    where
-        ilCompose :: ANF a x -> InitLast x b -> InitLast a b
-        ilCompose a (IL bi bl) = IL (a :>>>: bi) bl
-
+-- TODO: ANF MAY CONTAIN COMPILED COMPONENTS
+-- Is there a better way to represent that a compiled form is
+-- minimally different? (has LoopD/LoopM instead of Loop)
+-- Ideally we have LoopD/LoopM as the highest component somehow
+-- and can thus replace accordingly? Unsure.
+-- This is a tomorrow job.
 infixl 3 :***:
 type NoComp :: forall s s'. Desc s -> Desc s' -> *
 data NoComp x y where
-    Loop :: ANF (P a c) (P b c) -> NoComp a b
-    (:***:) :: NoComp a b -> NoComp a' b' -> NoComp (P a a') (P b b')
-    Arr :: (Val a -> Val b) -> NoComp a b
+    Loop :: (ValidDesc a, ValidDesc b, ValidDesc c) =>
+        ANF (P a c) (P b c) -> NoComp a b
+    (:***:) :: (ValidDesc a, ValidDesc a', ValidDesc b, ValidDesc b') =>
+        NoComp a b -> NoComp a' b' -> NoComp (P a a') (P b b')
+    Arr :: (ValidDesc a, ValidDesc b) =>
+        (Val a -> Val b) -> NoComp a b
     -- This forces Pre (Pair i j) to be represented as Pre i *** Pre j.
     Pre :: Val (V (a :: *)) -> NoComp (V a) (V a)
-    -- NOTE: I've tried to split up Id like with Pre and it doesn't work. Type
-    -- erasure means that defining something that takes in no arguments means
-    -- it needs a context in order to determine how to proceed. And adding that
-    -- context means including it everywhere, which is hellish.
-    Id :: NoComp a a
+    -- This forces Id on tuple types to be reduced to Id *** Id.
+    Id :: NoComp (V (a :: *)) (V a)
 
 -- ArrowLoopPre, which replaces Loop with LoopD and LoopM, and introduces
 -- decoupled signal functions.
 type ALP :: forall s s'. Desc s -> Desc s' -> *
 data ALP a b where
-    (:>>>>:) :: ALP a b -> ALP b c -> ALP a c
-    Sing :: NoComp' a b -> ALP a b
+    (:>>>>:) :: (ValidDesc a, ValidDesc b, ValidDesc c) =>
+        ALP a b -> ALP b c -> ALP a c
+    Sing :: (ValidDesc a, ValidDesc b) =>
+        NoComp' a b -> ALP a b
 
 type NoComp' :: forall s s'. Desc s -> Desc s' -> *
 data NoComp' a b where
-    LoopD :: ALP (P a c) (P b d) -> Decoupled d c -> NoComp' a b
-    (:****:) :: NoComp' a b -> NoComp' a' b' -> NoComp' (P a a') (P b b')
-    Arr' :: (Val a -> Val b) -> NoComp' a b
-    Id' :: NoComp' a a
-    Dec :: Decoupled a b -> NoComp' a b
+    LoopD :: (ValidDesc a, ValidDesc b, ValidDesc c, ValidDesc d) =>
+        ALP (P a c) (P b d) -> Decoupled d c -> NoComp' a b
+    (:****:) :: (ValidDesc a, ValidDesc a', ValidDesc b, ValidDesc b') =>
+        NoComp' a b -> NoComp' a' b' -> NoComp' (P a a') (P b b')
+    Arr' :: (ValidDesc a, ValidDesc b) =>
+        (Val a -> Val b) -> NoComp' a b
+    Id' :: ValidDesc a => NoComp' a a
+    Dec :: (ValidDesc a, ValidDesc b) =>
+        Decoupled a b -> NoComp' a b
 
 type Decoupled :: forall s s'. Desc s -> Desc s' -> *
 data Decoupled a b where
-    BothDec :: Decoupled a b -> Decoupled a' b' -> Decoupled (P a a') (P b b')
-    LoopM :: ALP (P a c) d -> Decoupled d e -> ALP e (P b c) -> Decoupled a b
-    Pre' :: Val (V (a :: *)) -> Decoupled (V a) (V a)
+    BothDec :: (ValidDesc a, ValidDesc b, ValidDesc a', ValidDesc b') =>
+        Decoupled a b -> Decoupled a' b' -> Decoupled (P a a') (P b b')
+    LoopM :: (ValidDesc a, ValidDesc b, ValidDesc c, ValidDesc d, ValidDesc e) =>
+        ALP (P a c) d -> Decoupled d e -> ALP e (P b c) -> Decoupled a b
+    Pre' :: ValidDesc (V a) =>
+        Val (V (a :: *)) -> Decoupled (V a) (V a)
 
 -- * Show instances
 
@@ -153,18 +149,18 @@ instance (Eq (Val a), Eq (Val b)) => Eq (Val (P a b)) where
 
 -- Helper lift functions
 
-lift_ :: NoComp a b -> ANF a b
+lift_ :: (ValidDesc a, ValidDesc b) => NoComp a b -> ANF a b
 lift_ = Single
 
-arr_ :: (Val a -> Val b) -> ANF a b
+arr_ :: (ValidDesc a, ValidDesc b) => (Val a -> Val b) -> ANF a b
 arr_ = Single . Arr
 
-id_ :: ANF a a
-id_ = Single Id
+id_ :: ValidDesc a => ANF a a
+id_ = Single (generateId (Proxy :: Proxy a))
 
-pre_ :: Val a -> ANF a a
+pre_ :: ValidDesc a => Val a -> ANF a a
 pre_ = Single . preHelp
     where
-        preHelp :: Val a -> NoComp a a
+        preHelp :: ValidDesc a => Val a -> NoComp a a
         preHelp (One a) = Pre (One a)
         preHelp (Pair a b) = preHelp a :***: preHelp b

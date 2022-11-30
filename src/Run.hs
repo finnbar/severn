@@ -4,32 +4,39 @@ module Run where
 
 import NF
 
-runNoLoop :: NoLoop a b -> Val a -> (Val b, NoLoop a b)
-runNoLoop (f :>>>: g) a =
-    let (intermediate, f') = runNoLoop f a
-        (final, g') = runNoComp g intermediate
-    in (final, f' :>>>: g')
-runNoLoop (WithoutComp f) a = let (b, cont) = runNoComp f a in (b, WithoutComp cont)
+runDec :: Decoupled a b -> (Val b, Val a -> Decoupled a b)
+runDec (BothDec f g) =
+    let (outF, fCont) = runDec f
+        (outG, gCont) = runDec g
+    in (Pair outF outG, \(Pair x y) -> BothDec (fCont x) (gCont y))
+runDec (LoopM f d g) =
+    let (outD, dCont) = runDec d
+        (Pair loopOut looped, g') = runALP g outD
+    in (loopOut, \v ->
+            let (outF, f') = runALP f (Pair v looped)
+                d' = dCont outF
+            in LoopM f' d' g'
+        )
+runDec (Pre' v) = (v, Pre')
 
-runNoComp :: NoComp a b -> Val a -> (Val b, NoComp a b)
-runNoComp (f :***: g) (Pair a b) =
-    let (l, f') = runNoComp f a
-        (r, g') = runNoComp g b
-    in (Pair l r, f' :***: g')
-runNoComp (Arr f) a = (f a, Arr f)
-runNoComp (Pre i) a = (i, Pre a)
-runNoComp Id a = (a, Id)
-runNoComp Assoc (Pair (Pair a b) c) = (Pair a (Pair b c), Assoc)
-runNoComp Cossa (Pair a (Pair b c)) = (Pair (Pair a b) c, Cossa)
-runNoComp Juggle (Pair (Pair a b) c) = (Pair (Pair a c) b, Juggle)
-runNoComp Distribute (Pair (Pair a b) (Pair c d)) =
-    (Pair (Pair a c) (Pair b d), Distribute)
-runNoComp Squish (Pair a (Pair b c)) = (Pair b (Pair a c), Squish)
+runNoComp' :: NoComp' a b -> Val a -> (Val b, NoComp' a b)
+runNoComp' (LoopD alp dec) a = undefined
+runNoComp' (f :****: g) (Pair a b) =
+    let (l, f') = runNoComp' f a
+        (r, g') = runNoComp' g b
+    in (Pair l r, f' :****: g')
+runNoComp' (Arr' f) a = (f a, Arr' f)
+runNoComp' Id' a = (a, Id')
+runNoComp' (Dec d) a =
+    let (b, dCont) = runDec d
+        d' = dCont a
+    in (b, Dec d')
 
 runALP :: (ValidDesc a, ValidDesc b) => ALP a b -> Val a -> (Val b, ALP a b)
-runALP (WithoutLoopPre f) a =
-    let (b, f') = runNoLoop f a
-    in (b, WithoutLoopPre f')
-runALP (LoopPre i f) a =
-    let (Pair b c, f') = runNoLoop f (Pair a i)
-    in (b, LoopPre c f')
+runALP (f :>>>>: g) a =
+    let (b, f') = runALP f a
+        (c, g') = runALP g b
+    in (c, f' :>>>>: g')
+runALP (Sing f) a =
+    let (b, f') = runNoComp' f a
+    in (b, Sing f')
