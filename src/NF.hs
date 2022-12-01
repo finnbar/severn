@@ -35,6 +35,8 @@ instance (ValidDesc a, ValidDesc b) => ValidDesc (P a b) where
     generateId Proxy = generateId (Proxy :: Proxy a) :***: generateId (Proxy :: Proxy b)
 
 -- ArrowNormalForm, so we force >>> to be at the top level of each loop.
+-- Note that this may be at any stage of compilation, so could be a mix of
+-- Loop/LoopD/LoopM.
 infixl 1 :>>>:
 type ANF :: forall s s'. Desc s -> Desc s' -> *
 data ANF x y where
@@ -48,54 +50,29 @@ data ANF x y where
 data CompTwo a c where
     C2 :: NoComp a b -> NoComp b c -> CompTwo a c
 
--- TODO: ANF MAY CONTAIN COMPILED COMPONENTS
--- Is there a better way to represent that a compiled form is
--- minimally different? (has LoopD/LoopM instead of Loop)
--- Ideally we have LoopD/LoopM as the highest component somehow
--- and can thus replace accordingly? Unsure.
--- This is a tomorrow job.
 infixl 3 :***:
 type NoComp :: forall s s'. Desc s -> Desc s' -> *
 data NoComp x y where
     Loop :: (ValidDesc a, ValidDesc b, ValidDesc c) =>
         ANF (P a c) (P b c) -> NoComp a b
+    LoopD :: (ValidDesc a, ValidDesc b, ValidDesc c, ValidDesc d) =>
+        ANF (P a c) (P b d) -> Decoupled d c -> NoComp a b
     (:***:) :: (ValidDesc a, ValidDesc a', ValidDesc b, ValidDesc b') =>
         NoComp a b -> NoComp a' b' -> NoComp (P a a') (P b b')
     Arr :: (ValidDesc a, ValidDesc b) =>
         (Val a -> Val b) -> NoComp a b
-    -- This forces Pre (Pair i j) to be represented as Pre i *** Pre j.
-    Pre :: Val (V (a :: *)) -> NoComp (V a) (V a)
     -- This forces Id on tuple types to be reduced to Id *** Id.
     Id :: NoComp (V (a :: *)) (V a)
-
--- ArrowLoopPre, which replaces Loop with LoopD and LoopM, and introduces
--- decoupled signal functions.
-type ALP :: forall s s'. Desc s -> Desc s' -> *
-data ALP a b where
-    (:>>>>:) :: (ValidDesc a, ValidDesc b, ValidDesc c) =>
-        ALP a b -> ALP b c -> ALP a c
-    Sing :: (ValidDesc a, ValidDesc b) =>
-        NoComp' a b -> ALP a b
-
-type NoComp' :: forall s s'. Desc s -> Desc s' -> *
-data NoComp' a b where
-    LoopD :: (ValidDesc a, ValidDesc b, ValidDesc c, ValidDesc d) =>
-        ALP (P a c) (P b d) -> Decoupled d c -> NoComp' a b
-    (:****:) :: (ValidDesc a, ValidDesc a', ValidDesc b, ValidDesc b') =>
-        NoComp' a b -> NoComp' a' b' -> NoComp' (P a a') (P b b')
-    Arr' :: (ValidDesc a, ValidDesc b) =>
-        (Val a -> Val b) -> NoComp' a b
-    Id' :: ValidDesc a => NoComp' a a
-    Dec :: (ValidDesc a, ValidDesc b) =>
-        Decoupled a b -> NoComp' a b
+    Dec :: Decoupled a b -> NoComp a b
 
 type Decoupled :: forall s s'. Desc s -> Desc s' -> *
 data Decoupled a b where
     BothDec :: (ValidDesc a, ValidDesc b, ValidDesc a', ValidDesc b') =>
         Decoupled a b -> Decoupled a' b' -> Decoupled (P a a') (P b b')
     LoopM :: (ValidDesc a, ValidDesc b, ValidDesc c, ValidDesc d, ValidDesc e) =>
-        ALP (P a c) d -> Decoupled d e -> ALP e (P b c) -> Decoupled a b
-    Pre' :: ValidDesc (V a) =>
+        ANF (P a c) d -> Decoupled d e -> ANF e (P b c) -> Decoupled a b
+    -- This forces Pre (Pair i j) to be represented as Pre i *** Pre j.
+    Pre :: ValidDesc (V a) =>
         Val (V (a :: *)) -> Decoupled (V a) (V a)
 
 -- * Show instances
@@ -111,26 +88,16 @@ instance Show (ANF a b) where
 
 instance Show (NoComp a b) where
     show (Loop f) = "Loop (" ++ show f ++ ")"
+    show (LoopD f dec) = "LoopD (" ++ show f ++ ") (" ++ show dec ++ ")"
     show (f :***: g) = "(" ++ show f ++ " *** " ++ show g ++ ")"
     show (Arr f) = "Arr"
-    show (Pre a) = "Pre"
     show Id = "Id"
-
-instance Show (ALP a b) where
-    show (f :>>>>: g) = "(" ++ show f ++ " >>> " ++ show g ++ ")"
-    show (Sing f) = show f
-
-instance Show (NoComp' a b) where
-    show (LoopD f dec) = "LoopD (" ++ show f ++ ") (" ++ show dec ++ ")"
-    show (f :****: g) = "(" ++ show f ++ " *** " ++ show g ++ ")"
-    show (Arr' f) = "Arr"
-    show Id' = "Id"
-    show (Dec f) = show f
+    show (Dec d) = show d
 
 instance Show (Decoupled a b) where
     show (BothDec f g) = "(" ++ show f ++ " *** " ++ show g ++ ")"
     show (LoopM f d g) = "LoopM (" ++ show f ++ ") (" ++ show d ++ ") (" ++ show g ++ ")"
-    show (Pre' v) = "Pre"
+    show (Pre v) = "Pre"
 
 -- * Eq instances
 
@@ -162,5 +129,5 @@ pre_ :: ValidDesc a => Val a -> ANF a a
 pre_ = Single . preHelp
     where
         preHelp :: ValidDesc a => Val a -> NoComp a a
-        preHelp (One a) = Pre (One a)
+        preHelp (One a) = Dec $ Pre (One a)
         preHelp (Pair a b) = preHelp a :***: preHelp b

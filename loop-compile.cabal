@@ -30,7 +30,6 @@ library
       Run
       Scratchpad
       Transform
-      TransformRight
   other-modules:
       Paths_loop_compile
   hs-source-dirs:
