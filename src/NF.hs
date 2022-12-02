@@ -48,7 +48,11 @@ data ANF x y where
 -- @CompTwo@ represents exactly two composed terms.
 -- This is used to avoid some awkward pattern matching.
 data CompTwo a c where
-    C2 :: NoComp a b -> NoComp b c -> CompTwo a c
+    C2 :: (ValidDesc a, ValidDesc b, ValidDesc c) =>
+        NoComp a b -> NoComp b c -> CompTwo a c
+
+compTwoPar :: CompTwo a b -> CompTwo a' b' -> CompTwo (P a a') (P b b')
+compTwoPar (C2 fl fr) (C2 gl gr) = C2 (fl :***: gl) (fr :***: gr)
 
 infixl 3 :***:
 type NoComp :: forall s s'. Desc s -> Desc s' -> *
@@ -124,6 +128,9 @@ arr_ = Single . Arr
 
 id_ :: ValidDesc a => ANF a a
 id_ = Single (generateId (Proxy :: Proxy a))
+
+idNoComp :: ValidDesc a => NoComp a a
+idNoComp = generateId (Proxy :: Proxy a)
 
 pre_ :: ValidDesc a => Val a -> ANF a a
 pre_ = Single . preHelp
