@@ -4,6 +4,9 @@
 module NF where
 
 import Data.Proxy
+import Data.Type.Equality (type (:~~:)(..))
+
+-- TODO: Move non-type parts of this file.
 
 -- * Data types and constructors
 
@@ -51,8 +54,17 @@ data CompTwo a c where
     C2 :: (ValidDesc a, ValidDesc b, ValidDesc c) =>
         NoComp a b -> NoComp b c -> CompTwo a c
 
+-- Combines two CompTwo in parallel
 compTwoPar :: CompTwo a b -> CompTwo a' b' -> CompTwo (P a a') (P b b')
 compTwoPar (C2 fl fr) (C2 gl gr) = C2 (fl :***: gl) (fr :***: gr)
+
+-- Converts a CompTwo into an ANF, removing surplus Id terms
+compTwoCompose :: CompTwo a b -> ANF a b
+compTwoCompose (C2 f g) = case isId f of
+    Just HRefl -> Single g
+    Nothing -> case isId g of
+        Just HRefl -> Single f
+        Nothing -> Single f :>>>: Single g
 
 infixl 3 :***:
 type NoComp :: forall s s'. Desc s -> Desc s' -> *
@@ -68,6 +80,15 @@ data NoComp x y where
     -- This forces Id on tuple types to be reduced to Id *** Id.
     Id :: NoComp (V (a :: *)) (V a)
     Dec :: Decoupled a b -> NoComp a b
+
+-- Provides a proof that the input NoComp is Id, and thus a ~ b.
+isId :: ValidDesc a => NoComp a b -> Maybe (a :~~: b)
+isId Id = Just HRefl
+isId (f :***: g) = do
+    HRefl <- isId f
+    HRefl <- isId g
+    return HRefl
+isId _ = Nothing
 
 type Decoupled :: forall s s'. Desc s -> Desc s' -> *
 data Decoupled a b where
