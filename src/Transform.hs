@@ -4,10 +4,11 @@ module Transform (transform) where
 
 import ArrowNF
 import Data.Maybe (fromJust)
+import Control.Applicative
 import Data.Type.Equality (type (:~~:)(..))
 
 data LoopBox a b where
-    LB :: ANF (P a c) (P b c) -> LoopBox a b
+    LB :: ValidDesc c => ANF (P a c) (P b c) -> LoopBox a b
 
 -- Traverse the program to find Loop.
 -- ASSUMPTION: We assume that we do not start with any LoopD or LoopM, or at least
@@ -22,13 +23,26 @@ transform (f :>>>: g) = transform f :>>>: transform g
 
 -- The main transformation algorithm. Tries to transform to LoopM, and then LoopD.
 transformLoop :: (ValidDesc a, ValidDesc b) => LoopBox a b -> ANF a b
-transformLoop lb =
-    case transformLoopM lb of
-        Just anf -> anf
-        Nothing -> fromJust $ transformLoopD lb
+transformLoop lb = fromJust $ transformLoopM lb <|> transformLoopD lb
 
-transformLoopM :: LoopBox a b -> Maybe (ANF a b)
-transformLoopM _ = Nothing
+transformLoopM :: (ValidDesc a, ValidDesc b) => LoopBox a b -> Maybe (ANF a b)
+transformLoopM (LB anf) = transformLoopM' id_ anf 
+    where
+        -- Inputs: the part of the ANF already checked and the part to check
+        transformLoopM' :: (ValidDesc a, ValidDesc b, ValidDesc c, ValidDesc d) =>
+            ANF (P a c) d -> ANF d (P b c) -> Maybe (ANF a b)
+        transformLoopM' before anf =
+            case headTail (leftCrunch anf) of
+                -- If this anf consists of only one term, see if it is decoupled.
+                Left d -> asDecoupled d >>= \d' -> Just . Single . Dec $ LoopM before d' id_
+                -- If not, see if the head is currently decoupled.
+                Right (HT s ss) -> case asDecoupled s of
+                    Just sdec -> Just . Single . Dec $ LoopM before sdec ss
+                    -- If it isn't decoupled, use left extract to remove the bits that can't
+                    -- be part of the solution.
+                    Nothing -> case compTwoCompose $ leftExtract s of
+                        nodec :>>>: dec -> transformLoopM' (before :>>>: nodec) (dec :>>>: ss)
+                        Single s' -> transformLoopM' (before :>>>: Single s') ss
 
 transformLoopD :: (ValidDesc a, ValidDesc b) => LoopBox a b -> Maybe (ANF a b)
 transformLoopD lb =
