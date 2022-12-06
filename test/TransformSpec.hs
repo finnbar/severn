@@ -28,10 +28,10 @@ removeDesc (One a) = a
 removeDesc (Pair a b) = (removeDesc a, removeDesc b)
 
 checkEqual :: (Eq (Simplify a), Eq (Simplify b), Show (Simplify b), ValidDesc a, ValidDesc b) =>
-    (ALP a b, SF (Simplify a) (Simplify b)) -> ([Val a], [Simplify a]) -> PropertyT IO ()
-checkEqual (alp, sf) (ins, ins') =
+    (ANF a b, SF (Simplify a) (Simplify b)) -> ([Val a], [Simplify a]) -> PropertyT IO ()
+checkEqual (anf, sf) (ins, ins') =
     let sfres = embed sf (deltaEncode 1 ins')
-        alpres = map removeDesc $ multiRun runALP alp ins
+        alpres = map removeDesc $ multiRun runANF anf ins
     in sfres === alpres
 
 -- This makes sure that `transform` leaves programs without loops entirely unaffected.

@@ -67,7 +67,6 @@ genTrio ::
         SF ((Int, Int), Int) ((Int, Int), Int))
 genTrio = Gen.choice [
         bimapTwoGen (***) (A.***) genPair genSingle,
-        Gen.constant (WithoutLoop (lift_ Juggle), A.arr (\(~(~(a,b),c)) -> ((a,c),b))),
         Gen.constant (arr
             (\(Pair (Pair (One a) (One b)) (One c)) ->
                 Pair (Pair (One b) (One c)) (One a)),

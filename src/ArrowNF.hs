@@ -59,7 +59,7 @@ second = (id ***)
 
 loop :: (ValidDesc a, ValidDesc b, ValidDesc c) =>
     ANF (P a c) (P b c) -> ANF a b
-loop = undefined
+loop = Single . Loop
 
 pre :: ValidDesc a => Val a -> ANF a a
 pre = pre_

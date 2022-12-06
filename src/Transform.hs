@@ -6,9 +6,13 @@ import ArrowNF
 import Data.Maybe (fromJust)
 import Control.Applicative
 import Data.Type.Equality (type (:~~:)(..))
+import Debug.Trace
 
 data LoopBox a b where
     LB :: ValidDesc c => ANF (P a c) (P b c) -> LoopBox a b
+
+instance Show (LoopBox a b) where
+    show (LB anf) = show anf
 
 -- Traverse the program to find Loop.
 -- ASSUMPTION: We assume that we do not start with any LoopD or LoopM, or at least
@@ -26,12 +30,12 @@ transformLoop :: (ValidDesc a, ValidDesc b) => LoopBox a b -> ANF a b
 transformLoop lb = fromJust $ transformLoopM lb <|> transformLoopD lb
 
 transformLoopM :: (ValidDesc a, ValidDesc b) => LoopBox a b -> Maybe (ANF a b)
-transformLoopM (LB anf) = transformLoopM' id_ anf 
+transformLoopM (LB anf) = trace "try loopM" $ transformLoopM' id_ anf 
     where
         -- Inputs: the part of the ANF already checked and the part to check
         transformLoopM' :: (ValidDesc a, ValidDesc b, ValidDesc c, ValidDesc d) =>
             ANF (P a c) d -> ANF d (P b c) -> Maybe (ANF a b)
-        transformLoopM' before anf =
+        transformLoopM' before anf = 
             case headTail (leftCrunch anf) of
                 -- If this anf consists of only one term, see if it is decoupled.
                 Left d -> asDecoupled d >>= \d' -> Just . Single . Dec $ LoopM before d' id_
@@ -45,16 +49,16 @@ transformLoopM (LB anf) = transformLoopM' id_ anf
                         Single s' -> transformLoopM' (before :>>>: Single s') ss
 
 transformLoopD :: (ValidDesc a, ValidDesc b) => LoopBox a b -> Maybe (ANF a b)
-transformLoopD lb =
-    case sliding leftSlide lb of
+transformLoopD lb = trace "try LoopD" $
+    case trace "slide left" $ sliding leftSlide lb of
         Right anf -> Just anf
-        Left lb' -> case sliding rightSlide lb' of
+        Left lb' -> case trace "slide right" $ sliding rightSlide lb' of
             Right anf -> Just anf
             Left _ -> Nothing
     where
         sliding :: (ValidDesc a, ValidDesc b) =>
             (LoopBox a b -> Maybe (LoopBox a b)) -> LoopBox a b -> Either (LoopBox a b) (ANF a b)
-        sliding slide lb = case isLoopD lb of
+        sliding slide lb = traceShow lb $ case isLoopD lb of
             Just anf -> Right anf
             Nothing -> case slide lb of
                 Just lb' -> sliding slide lb'
