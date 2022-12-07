@@ -1,6 +1,6 @@
 {-# LANGUAGE ScopedTypeVariables, TypeOperators #-}
 
-module Transform (transform) where
+module Transform where
 
 import ArrowNF
 import Data.Maybe (fromJust)
@@ -23,14 +23,14 @@ transform (Single (Loop f)) = transformLoop (LB $ transform f)
 transform (Single (f :***: g)) = transform (Single f) *** transform (Single g)
 transform (Single g) = Single g
 -- If we have a composition, transform the elements of the composition.
-transform (f :>>>: g) = transform f :>>>: transform g
+transform (f :>>>: g) = transform f >>> transform g
 
 -- The main transformation algorithm. Tries to transform to LoopM, and then LoopD.
 transformLoop :: (ValidDesc a, ValidDesc b) => LoopBox a b -> ANF a b
 transformLoop lb = fromJust $ transformLoopM lb <|> transformLoopD lb
 
 transformLoopM :: (ValidDesc a, ValidDesc b) => LoopBox a b -> Maybe (ANF a b)
-transformLoopM (LB anf) = trace "try loopM" $ transformLoopM' id_ anf 
+transformLoopM (LB anf) = trace "LoopM" $ transformLoopM' id_ anf 
     where
         -- Inputs: the part of the ANF already checked and the part to check
         transformLoopM' :: (ValidDesc a, ValidDesc b, ValidDesc c, ValidDesc d) =>
@@ -45,33 +45,33 @@ transformLoopM (LB anf) = trace "try loopM" $ transformLoopM' id_ anf
                     -- If it isn't decoupled, use left extract to remove the bits that can't
                     -- be part of the solution.
                     Nothing -> case compTwoCompose $ leftExtract s of
-                        nodec :>>>: dec -> transformLoopM' (before :>>>: nodec) (dec :>>>: ss)
-                        Single s' -> transformLoopM' (before :>>>: Single s') ss
+                        nodec :>>>: dec -> transformLoopM' (before >>> nodec) (dec >>> ss)
+                        Single s' -> transformLoopM' (before >>> Single s') ss
 
 transformLoopD :: (ValidDesc a, ValidDesc b) => LoopBox a b -> Maybe (ANF a b)
-transformLoopD lb = trace "try LoopD" $
-    case trace "slide left" $ sliding leftSlide lb of
+transformLoopD lb = trace "LoopD" $
+    case sliding leftSlide lb of
         Right anf -> Just anf
-        Left lb' -> case trace "slide right" $ sliding rightSlide lb' of
+        Left lb' -> case sliding rightSlide lb' of
             Right anf -> Just anf
             Left _ -> Nothing
     where
         sliding :: (ValidDesc a, ValidDesc b) =>
             (LoopBox a b -> Maybe (LoopBox a b)) -> LoopBox a b -> Either (LoopBox a b) (ANF a b)
-        sliding slide lb = traceShow lb $ case isLoopD lb of
+        sliding slide lb = case isLoopD lb of
             Just anf -> Right anf
             Nothing -> case slide lb of
                 Just lb' -> sliding slide lb'
                 Nothing -> Left lb
-        -- If this is in the form of a LoopD, make it so.
-        -- Also apply left/right tightening.
-        isLoopD :: ValidDesc a => LoopBox a b -> Maybe (ANF a b)
-        isLoopD (LB anf) = case initLast anf of
-            Left (f :***: g) ->
-                asDecoupled g >>= Just . tightening (Single f *** id_)
-            Right (IL ss (f :***: g)) ->
-                asDecoupled g >>= Just . tightening (ss :>>>: (Single f *** id_))
-            _ -> Nothing
+-- If this is in the form of a LoopD, make it so.
+-- Also apply left/right tightening.
+isLoopD :: ValidDesc a => LoopBox a b -> Maybe (ANF a b)
+isLoopD (LB anf) = case initLast anf of
+    Left (f :***: g) ->
+        asDecoupled g >>= Just . tightening (Single f *** id_)
+    Right (IL ss (f :***: g)) ->
+        asDecoupled g >>= Just . tightening (ss >>> (Single f *** id_))
+    _ -> Nothing
 
 -- Have to do this to allow for reasonable return types.
 data Tightening a f where
@@ -86,16 +86,26 @@ tightening anf dec = tighteningToANF $ leftTighten $ rightTighten (TG id_ anf id
     where
         tighteningToANF :: Tightening a b -> ANF a b
         tighteningToANF (TG l anf r dec) =
-            l :>>>: Single (LoopD anf dec) :>>>: r
+            l >>> Single (LoopD anf dec) >>> r
         rightTighten :: Tightening a b -> Tightening a b
-        rightTighten (TG l anf r dec) = case initLast anf of
+        rightTighten (TG l anf r dec) = case initLast (rightCrunch anf) of
             Right (IL ss (f :***: g)) ->
-                rightTighten (TG l (ss :>>>: Single (idNoComp :***: g)) (Single f :>>>: r) dec)
+                -- Check we're not trying to slide id, because that will go infinite.
+                -- rightTighten (TG l (ss >>> (f :***: g)) r dec)
+                -- => rightTighten (TG l (ss >>> (id :***: g)) (f >>> r) dec)
+                -- which are identical if f = Id
+                -- We therefore stop recursion if f = Id.
+                case isId f of
+                    Just HRefl -> TG l anf r dec
+                    Nothing -> rightTighten (TG l (ss >>> Single (idNoComp :***: g)) (Single f >>> r) dec)
             _ -> TG l anf r dec
         leftTighten :: Tightening a b -> Tightening a b
-        leftTighten (TG l anf r dec) = case headTail anf of
+        leftTighten (TG l anf r dec) = case headTail (leftCrunch anf) of
             Right (HT (f :***: g) ss) ->
-                leftTighten (TG (l :>>>: Single f) (Single (idNoComp :***: g) :>>>: ss) r dec)
+                -- Check we're not trying to slide id, because that will go infinite (see rightTighten).
+                case isId f of
+                    Just HRefl -> TG l anf r dec
+                    Nothing -> leftTighten (TG (l >>> Single f) (Single (idNoComp :***: g) >>> ss) r dec)
             _ -> TG l anf r dec
 
 -- Move all non-ID terms to the left.
@@ -108,7 +118,7 @@ leftCrunch anf = case initLast anf of
             leftCrunch' a $ leftFill (C2 n f)
     where
         leftCrunch' :: ValidDesc a => ANF a b -> CompTwo b c -> ANF a c
-        leftCrunch' a (C2 n' f') = leftCrunch (a :>>>: Single n') :>>>: Single f'
+        leftCrunch' a (C2 n' f') = leftCrunch (a >>> Single n') >>> Single f'
 
 -- Move all non-ID terms to the right.
 rightCrunch :: ANF a b -> ANF a b
@@ -120,7 +130,7 @@ rightCrunch anf = case headTail anf of
             rightCrunch' (rightFill (C2 a n)) f
     where
         rightCrunch' :: ValidDesc c => CompTwo a b -> ANF b c -> ANF a c
-        rightCrunch' (C2 a' n') f = Single a' :>>>: rightCrunch (Single n' :>>>: f)
+        rightCrunch' (C2 a' n') f = Single a' >>> rightCrunch (Single n' >>> f)
 
 -- Apply right extract to the input term, returning a composition
 rightExtract :: (ValidDesc a, ValidDesc b) => NoComp a b -> CompTwo a b
@@ -135,19 +145,20 @@ leftExtract (f :***: g) = compTwoPar (leftExtract f) (leftExtract g)
 leftExtract f = C2 f idNoComp
 
 -- Apply right fill to a composition, moving parts of the composition.
+-- TODO: This is the opposite way around to the paper -- the paper gets it wrong.
 rightFill :: CompTwo a b -> CompTwo a b
 rightFill (C2 (f :***: g) (h :***: i)) =
     compTwoPar (rightFill $ C2 f h) (rightFill $ C2 g i)
-rightFill (C2 f g) = case isId f of
-    Just HRefl -> C2 g idNoComp
+rightFill (C2 f g) = case isId g of
+    Just HRefl -> C2 idNoComp f
     Nothing -> C2 f g
 
 -- Apply left fill to a composition, moving parts of the composition.
 leftFill :: CompTwo a b -> CompTwo a b
 leftFill (C2 (f :***: g) (h :***: i)) =
     compTwoPar (leftFill $ C2 f h) (leftFill $ C2 g i)
-leftFill (C2 f g) = case isId g of
-    Just HRefl -> C2 idNoComp f
+leftFill (C2 f g) = case isId f of
+    Just HRefl -> C2 g idNoComp 
     Nothing -> C2 f g
 
 asDecoupled :: NoComp a b -> Maybe (Decoupled a b)
@@ -160,46 +171,51 @@ asDecoupled _ = Nothing
 
 -- NOTE: In the paper we don't do fill/extract in left slides.
 -- This is actually needed for degenerate cases where we can always left slide.
+-- TODO: this infinite loops in the case:
+-- ((Arr *** Id) >>> (Arr >>> (((Id *** Pre) >>> (Id *** Arr)) >>> (Id *** Arr))))
+-- since it successfully slides Id and thus makes no change. Need to check for Id.
+-- This is becoming a bit of a theme, isn't it?
+-- (And note that leftFill doesn't do anything because of the Arr in second position.)
 leftSlide :: ValidDesc b => LoopBox a b -> Maybe (LoopBox a b)
 leftSlide lb = doLeftFill <$> (doLeftExtract lb >>= doLeftSlide)
     where
         doLeftExtract :: LoopBox a b -> Maybe (LoopBox a b)
-        doLeftExtract (LB anf) = case headTail anf of
+        doLeftExtract (LB anf) = trace ("left ext with " ++ show anf) $ case headTail anf of
             Left _ -> Nothing
             Right (HT s ss) -> case s of
-                s1 :***: s2 -> Just $ LB $ (Single s1 *** compTwoCompose (leftExtract s2)) >>> ss
+                s1 :***: s2 -> Just $ LB $ removeId $ (Single s1 *** compTwoCompose (leftExtract s2)) >>> ss
                 _ -> Nothing
         doLeftFill :: LoopBox a b -> LoopBox a b
-        doLeftFill (LB anf) = case headTail anf of
+        doLeftFill (LB anf) = trace ("left fill with " ++ show anf) $ case headTail anf of
             Left nc -> LB anf
             Right (HT s tu) -> case headTail tu of
                 Left tu' -> LB anf
-                Right (HT t u) -> LB $ compTwoCompose (leftFill $ C2 s t) >>> u
+                Right (HT t u) -> LB $ removeId $ compTwoCompose (leftFill $ C2 s t) >>> u
         doLeftSlide :: ValidDesc b => LoopBox a b -> Maybe (LoopBox a b)
-        doLeftSlide (LB anf) = case headTail anf of
+        doLeftSlide (LB anf) = trace ("left slide with " ++ show anf) $ case headTail anf of
             Left _ -> Nothing
             Right (HT s ss) -> case s of
-                s1 :***: s2 -> Just $ LB $ (Single s1 *** id_) >>> ss >>> (id_ *** Single s2)
+                s1 :***: s2 -> Just $ LB $ removeId $ (Single s1 *** id_) >>> ss >>> (id_ *** Single s2)
                 -- impossible to slide
                 _ -> Nothing
 
 rightSlide :: ValidDesc a => LoopBox a b -> Maybe (LoopBox a b)
-rightSlide lb = doRightFill <$> (doRightExtract lb >>= doRightSlide)
+rightSlide lb = traceShow lb $ doRightFill <$> (doRightExtract lb >>= doRightSlide)
     where
         doRightExtract :: LoopBox a b -> Maybe (LoopBox a b)
-        doRightExtract (LB anf) = case initLast anf of
+        doRightExtract (LB anf) = trace ("right ext with " ++ show anf) $ case initLast anf of
             Left _ -> Nothing
             Right (IL ss s) -> case s of
                 s1 :***: s2 -> Just $ LB $ ss >>> (Single s1 *** compTwoCompose (rightExtract s2))
                 _ -> Nothing
         doRightFill :: LoopBox a b -> LoopBox a b
-        doRightFill (LB anf) = case initLast anf of
+        doRightFill (LB anf) = trace ("right fill with " ++ show anf) $ case initLast anf of
             Left nc -> LB anf
             Right (IL st u) -> case initLast st of
                 Left st' -> LB anf
                 Right (IL s t) -> LB $ s >>> compTwoCompose (rightFill $ C2 t u)
         doRightSlide :: ValidDesc a => LoopBox a b -> Maybe (LoopBox a b)
-        doRightSlide (LB anf) = case initLast anf of
+        doRightSlide (LB anf) = trace ("right slide with " ++ show anf) $ case initLast anf of
             Left _ -> Nothing
             Right (IL ss s) -> case s of
                 s1 :***: s2 -> Just $ LB $ (id_ *** Single s2) >>> ss >>> (Single s1 *** id_)

@@ -38,7 +38,7 @@ id :: ValidDesc a => ANF a a
 id = id_
 
 (>>>) :: (ValidDesc a, ValidDesc b, ValidDesc c) => ANF a b -> ANF b c -> ANF a c
-f >>> g = f :>>>: g
+f >>> g = {- removeId $ -} f :>>>: g
 
 arr :: (ValidDesc a, ValidDesc b) => (Val a -> Val b) -> ANF a b
 arr = arr_

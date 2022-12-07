@@ -60,11 +60,25 @@ compTwoPar (C2 fl fr) (C2 gl gr) = C2 (fl :***: gl) (fr :***: gr)
 
 -- Converts a CompTwo into an ANF, removing surplus Id terms
 compTwoCompose :: CompTwo a b -> ANF a b
-compTwoCompose (C2 f g) = case isId f of
-    Just HRefl -> Single g
-    Nothing -> case isId g of
-        Just HRefl -> Single f
-        Nothing -> Single f :>>>: Single g
+compTwoCompose (C2 f g) = Single f :>>>: Single g
+
+-- Remove Id from a composition.
+removeId :: ANF a b -> ANF a b
+removeId (Single f) = case isId f of
+    Just HRefl -> id_
+    Nothing -> Single f
+removeId (f :>>>: g) =
+    let f' = removeId f
+        g' = removeId g
+    in case isSingleId f' of
+        Just HRefl -> g'
+        Nothing -> case isSingleId g' of
+            Just HRefl -> f'
+            Nothing -> f' :>>>: g'
+    where
+        isSingleId :: ANF a b -> Maybe (a :~~: b)
+        isSingleId (Single f) = isId f
+        isSingleId _ = Nothing
 
 infixl 3 :***:
 type NoComp :: forall s s'. Desc s -> Desc s' -> *
