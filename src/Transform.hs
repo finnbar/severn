@@ -6,13 +6,19 @@ import ArrowNF
 import Data.Maybe (fromJust)
 import Control.Applicative
 import Data.Type.Equality (type (:~~:)(..))
-import Debug.Trace
+import qualified Debug.Trace as T
 
 data LoopBox a b where
     LB :: ValidDesc c => ANF (P a c) (P b c) -> LoopBox a b
 
 instance Show (LoopBox a b) where
     show (LB anf) = show anf
+
+-- DEBUG: To avoid angering the tests, we provide these temporary stubs.
+-- trace = T.trace
+trace m t = t
+-- traceShow = T.traceShow
+traceShow m t = t
 
 -- Traverse the program to find Loop.
 -- ASSUMPTION: We assume that we do not start with any LoopD or LoopM, or at least
@@ -35,7 +41,8 @@ transformLoopM (LB anf) = trace "LoopM" $ transformLoopM' id_ anf
         -- Inputs: the part of the ANF already checked and the part to check
         transformLoopM' :: (ValidDesc a, ValidDesc b, ValidDesc c, ValidDesc d) =>
             ANF (P a c) d -> ANF d (P b c) -> Maybe (ANF a b)
-        transformLoopM' before anf = 
+        -- TODO: The leftCrunch isn't working properly
+        transformLoopM' before anf = traceShow anf $ traceShow (leftCrunch anf) $
             case headTail (leftCrunch anf) of
                 -- If this anf consists of only one term, see if it is decoupled.
                 Left d -> asDecoupled d >>= \d' -> Just . Single . Dec $ LoopM before d' id_
@@ -113,7 +120,7 @@ leftCrunch :: ANF a b -> ANF a b
 leftCrunch anf = case initLast anf of
     Left _ -> anf
     Right (IL an f) -> case initLast an of
-        Left _ -> anf
+        Left an' -> compTwoCompose $ leftFill (C2 an' f)
         Right (IL a n) ->
             leftCrunch' a $ leftFill (C2 n f)
     where
@@ -125,7 +132,7 @@ rightCrunch :: ANF a b -> ANF a b
 rightCrunch anf = case headTail anf of
     Left _ -> anf
     Right (HT a nf) -> case headTail nf of
-        Left _ -> anf
+        Left nf' -> compTwoCompose $ rightFill (C2 a nf')
         Right (HT n f) ->
             rightCrunch' (rightFill (C2 a n)) f
     where
@@ -183,19 +190,23 @@ leftSlide lb = doLeftFill <$> (doLeftExtract lb >>= doLeftSlide)
         doLeftExtract (LB anf) = trace ("left ext with " ++ show anf) $ case headTail anf of
             Left _ -> Nothing
             Right (HT s ss) -> case s of
-                s1 :***: s2 -> Just $ LB $ removeId $ (Single s1 *** compTwoCompose (leftExtract s2)) >>> ss
+                s1 :***: s2 -> Just $ LB $ (Single s1 *** compTwoCompose (leftExtract s2)) >>> ss
                 _ -> Nothing
         doLeftFill :: LoopBox a b -> LoopBox a b
         doLeftFill (LB anf) = trace ("left fill with " ++ show anf) $ case headTail anf of
             Left nc -> LB anf
             Right (HT s tu) -> case headTail tu of
                 Left tu' -> LB anf
-                Right (HT t u) -> LB $ removeId $ compTwoCompose (leftFill $ C2 s t) >>> u
+                Right (HT t u) -> LB $ compTwoCompose (leftFill $ C2 s t) >>> u
         doLeftSlide :: ValidDesc b => LoopBox a b -> Maybe (LoopBox a b)
         doLeftSlide (LB anf) = trace ("left slide with " ++ show anf) $ case headTail anf of
             Left _ -> Nothing
             Right (HT s ss) -> case s of
-                s1 :***: s2 -> Just $ LB $ removeId $ (Single s1 *** id_) >>> ss >>> (id_ *** Single s2)
+                s1 :***: s2 -> case isId s2 of
+                    -- If it's Id, you cannot slide further -- the removeId and compTwoCompose in leftExtract
+                    -- should mean that there being Id here => can't slide something useful in that slot.
+                    Just HRefl -> Nothing
+                    Nothing -> Just $ LB $ (Single s1 *** id_) >>> ss >>> (id_ *** Single s2)
                 -- impossible to slide
                 _ -> Nothing
 
@@ -218,5 +229,7 @@ rightSlide lb = traceShow lb $ doRightFill <$> (doRightExtract lb >>= doRightSli
         doRightSlide (LB anf) = trace ("right slide with " ++ show anf) $ case initLast anf of
             Left _ -> Nothing
             Right (IL ss s) -> case s of
-                s1 :***: s2 -> Just $ LB $ (id_ *** Single s2) >>> ss >>> (Single s1 *** id_)
+                s1 :***: s2 -> case isId s2 of
+                    Just HRefl -> Nothing
+                    Nothing -> Just $ LB $ (id_ *** Single s2) >>> ss >>> (Single s1 *** id_)
                 _ -> Nothing

@@ -60,7 +60,7 @@ compTwoPar (C2 fl fr) (C2 gl gr) = C2 (fl :***: gl) (fr :***: gr)
 
 -- Converts a CompTwo into an ANF, removing surplus Id terms
 compTwoCompose :: CompTwo a b -> ANF a b
-compTwoCompose (C2 f g) = Single f :>>>: Single g
+compTwoCompose (C2 f g) = removeId $ Single f :>>>: Single g
 
 -- Remove Id from a composition.
 removeId :: ANF a b -> ANF a b
