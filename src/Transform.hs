@@ -6,19 +6,12 @@ import ArrowNF
 import Data.Maybe (fromJust)
 import Control.Applicative
 import Data.Type.Equality (type (:~~:)(..))
-import qualified Debug.Trace as T
 
 data LoopBox a b where
     LB :: ValidDesc c => ANF (P a c) (P b c) -> LoopBox a b
 
 instance Show (LoopBox a b) where
     show (LB anf) = show anf
-
--- DEBUG: To avoid angering the tests, we provide these temporary stubs.
--- trace = T.trace
-trace m t = t
--- traceShow = T.traceShow
-traceShow m t = t
 
 -- Traverse the program to find Loop.
 -- ASSUMPTION: We assume that we do not start with any LoopD or LoopM, or at least
@@ -36,13 +29,12 @@ transformLoop :: (ValidDesc a, ValidDesc b) => LoopBox a b -> ANF a b
 transformLoop lb = fromJust $ transformLoopM lb <|> transformLoopD lb
 
 transformLoopM :: (ValidDesc a, ValidDesc b) => LoopBox a b -> Maybe (ANF a b)
-transformLoopM (LB anf) = trace "LoopM" $ transformLoopM' id_ anf 
+transformLoopM (LB anf) = transformLoopM' id_ anf 
     where
         -- Inputs: the part of the ANF already checked and the part to check
         transformLoopM' :: (ValidDesc a, ValidDesc b, ValidDesc c, ValidDesc d) =>
             ANF (P a c) d -> ANF d (P b c) -> Maybe (ANF a b)
-        -- TODO: The leftCrunch isn't working properly
-        transformLoopM' before anf = traceShow anf $ traceShow (leftCrunch anf) $
+        transformLoopM' before anf =
             case headTail (leftCrunch anf) of
                 -- If this anf consists of only one term, see if it is decoupled.
                 Left d -> asDecoupled d >>= \d' -> Just . Single . Dec $ LoopM before d' id_
@@ -56,7 +48,7 @@ transformLoopM (LB anf) = trace "LoopM" $ transformLoopM' id_ anf
                         Single s' -> transformLoopM' (before >>> Single s') ss
 
 transformLoopD :: (ValidDesc a, ValidDesc b) => LoopBox a b -> Maybe (ANF a b)
-transformLoopD lb = trace "LoopD" $
+transformLoopD lb =
     case sliding leftSlide lb of
         Right anf -> Just anf
         Left lb' -> case sliding rightSlide lb' of
@@ -178,28 +170,23 @@ asDecoupled _ = Nothing
 
 -- NOTE: In the paper we don't do fill/extract in left slides.
 -- This is actually needed for degenerate cases where we can always left slide.
--- TODO: this infinite loops in the case:
--- ((Arr *** Id) >>> (Arr >>> (((Id *** Pre) >>> (Id *** Arr)) >>> (Id *** Arr))))
--- since it successfully slides Id and thus makes no change. Need to check for Id.
--- This is becoming a bit of a theme, isn't it?
--- (And note that leftFill doesn't do anything because of the Arr in second position.)
 leftSlide :: ValidDesc b => LoopBox a b -> Maybe (LoopBox a b)
 leftSlide lb = doLeftFill <$> (doLeftExtract lb >>= doLeftSlide)
     where
         doLeftExtract :: LoopBox a b -> Maybe (LoopBox a b)
-        doLeftExtract (LB anf) = trace ("left ext with " ++ show anf) $ case headTail anf of
+        doLeftExtract (LB anf) = case headTail anf of
             Left _ -> Nothing
             Right (HT s ss) -> case s of
                 s1 :***: s2 -> Just $ LB $ (Single s1 *** compTwoCompose (leftExtract s2)) >>> ss
                 _ -> Nothing
         doLeftFill :: LoopBox a b -> LoopBox a b
-        doLeftFill (LB anf) = trace ("left fill with " ++ show anf) $ case headTail anf of
+        doLeftFill (LB anf) = case headTail anf of
             Left nc -> LB anf
             Right (HT s tu) -> case headTail tu of
                 Left tu' -> LB anf
                 Right (HT t u) -> LB $ compTwoCompose (leftFill $ C2 s t) >>> u
         doLeftSlide :: ValidDesc b => LoopBox a b -> Maybe (LoopBox a b)
-        doLeftSlide (LB anf) = trace ("left slide with " ++ show anf) $ case headTail anf of
+        doLeftSlide (LB anf) = case headTail anf of
             Left _ -> Nothing
             Right (HT s ss) -> case s of
                 s1 :***: s2 -> case isId s2 of
@@ -211,22 +198,22 @@ leftSlide lb = doLeftFill <$> (doLeftExtract lb >>= doLeftSlide)
                 _ -> Nothing
 
 rightSlide :: ValidDesc a => LoopBox a b -> Maybe (LoopBox a b)
-rightSlide lb = traceShow lb $ doRightFill <$> (doRightExtract lb >>= doRightSlide)
+rightSlide lb = doRightFill <$> (doRightExtract lb >>= doRightSlide)
     where
         doRightExtract :: LoopBox a b -> Maybe (LoopBox a b)
-        doRightExtract (LB anf) = trace ("right ext with " ++ show anf) $ case initLast anf of
+        doRightExtract (LB anf) = case initLast anf of
             Left _ -> Nothing
             Right (IL ss s) -> case s of
                 s1 :***: s2 -> Just $ LB $ ss >>> (Single s1 *** compTwoCompose (rightExtract s2))
                 _ -> Nothing
         doRightFill :: LoopBox a b -> LoopBox a b
-        doRightFill (LB anf) = trace ("right fill with " ++ show anf) $ case initLast anf of
+        doRightFill (LB anf) = case initLast anf of
             Left nc -> LB anf
             Right (IL st u) -> case initLast st of
                 Left st' -> LB anf
                 Right (IL s t) -> LB $ s >>> compTwoCompose (rightFill $ C2 t u)
         doRightSlide :: ValidDesc a => LoopBox a b -> Maybe (LoopBox a b)
-        doRightSlide (LB anf) = trace ("right slide with " ++ show anf) $ case initLast anf of
+        doRightSlide (LB anf) = case initLast anf of
             Left _ -> Nothing
             Right (IL ss s) -> case s of
                 s1 :***: s2 -> case isId s2 of
