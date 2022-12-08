@@ -32,7 +32,7 @@ removeDesc (Pair a b) = (removeDesc a, removeDesc b)
 checkEqualTransform :: (Eq (Simplify a), Eq (Simplify b), Show (Simplify b), ValidDesc a, ValidDesc b) =>
     (ANF a b, SF (Simplify a) (Simplify b)) -> ([Val a], [Simplify a]) -> PropertyT IO ()
 checkEqualTransform (anf, sf) (ins, ins') = do
-    res <- liftIO $ timeout 100000 $ do
+    res <- liftIO $ timeout 1000000 $ do
         -- Strictness required to force these to calculate (and thus fail the timeout)
         let sfres = embed sf (deltaEncode 1 ins')
             !anf' = transform anf
@@ -118,6 +118,7 @@ makeRightCrusher = do
 -- (a *** b) >>> (id *** c)
 -- we get
 -- (id *** b) >>> (a *** c) [and similar for a *** b >>> c *** id]
+-- TODO: This test nondeterministically times out.
 prop_right_crush :: Property
 prop_right_crush = property $ do
     (ins, ins') <- forAll genOneVals
@@ -140,23 +141,29 @@ prop_left_slide = property $ do
     (anf, sf) <- forAllWith (show . fst) makeLeftSlider
     checkEqualTransform (anf, sf) (ins, ins')
 
--- TODO: This is now LoopM
+makeLoopM :: Gen (ANF (V Int) (V Int), SF Int Int)
+makeLoopM = do
+    leftLen <- Gen.integral (Range.linear 1 3)
+    rightLen <- Gen.integral (Range.linear 1 3)
+    (anfleft, sfleft) <- genPairProg leftLen
+    (anfright, sfright) <- genPairProg rightLen
+    (del, del') <- genPairVal
+    return (
+            loop $ anfleft >>> pre del >>> anfright,
+            A.loop $ sfleft A.>>> iPre del' A.>>> sfright
+        )
+
 prop_loopM :: Property
 prop_loopM = property $ do
     (ins, ins') <- forAll genOneVals
-    leftLen <- forAll $ Gen.integral (Range.linear 1 3)
-    rightLen <- forAll $ Gen.integral (Range.linear 1 3)
-    (anfleft, sfleft) <- forAllWith (show . fst) $ genPairProg leftLen
-    (anfright, sfright) <- forAllWith (show . fst) $ genPairProg rightLen
-    (del, del') <- forAll genPairVal
-    checkEqualTransform (loop $ anfleft >>> pre del >>> anfright, A.loop $ sfleft A.>>> iPre del' A.>>> sfright) (ins, ins')
+    (anf, sf) <- forAllWith (show . fst) makeLoopM
+    checkEqualTransform (anf, sf) (ins, ins')
 
--- TODO: Loop in loop, where each loop has its own delay.
--- Also this test currently assumes that both loops are solvable via right sliding - we need a mix.
-prop_loop_in_loop_right :: Property
-prop_loop_in_loop_right = property $ do
+-- Two right sliding loops, one inside another. They each have their own $pre$.
+prop_loop_in_loop :: Property
+prop_loop_in_loop = property $ do
     (ins, ins') <- forAll genOneVals
-    (anfinner, sfinner) <- forAllWith (show . fst) makeRightSlider
+    (anfinner, sfinner) <- forAllWith (show . fst) $ Gen.choice [makeRightSlider, makeLeftSlider]
     len <- forAll $ Gen.integral (Range.linear 1 3)
     len' <- forAll $ Gen.integral (Range.linear 1 3)
     (anfextra, sfextra) <- forAllWith (show . fst) $ genSingleProg len
@@ -166,21 +173,7 @@ prop_loop_in_loop_right = property $ do
         ]
     checkEqualTransform (anf, sf) (ins, ins')
 
-prop_loop_in_loop_left :: Property
-prop_loop_in_loop_left = property $ do
-    (ins, ins') <- forAll genOneVals
-    (anfinner, sfinner) <- forAllWith (show . fst) makeLeftSlider
-    len <- forAll $ Gen.integral (Range.linear 1 3)
-    len' <- forAll $ Gen.integral (Range.linear 1 3)
-    (anfextra, sfextra) <- forAllWith (show . fst) $ genSingleProg len
-    (anf, sf) <- forAllWith (show . fst) $ Gen.element [
-            (loop $ second (anfextra >>> pre (One 0)) >>> first anfinner,
-                A.loop $ A.second (sfextra A.>>> iPre 0) A.>>> A.first sfinner)
-        ]
-    checkEqualTransform (anf, sf) (ins, ins')
-
--- TODO: test where an inner loop acts as the pre for an outer loop
--- TODO: tests for first (loop f) and others that require Distributive and Juggle.
+-- Make sure a pair of loops works.
 prop_pair_loop :: Property
 prop_pair_loop = property $ do
     (ins, ins') <- forAll genPairVals
@@ -188,6 +181,33 @@ prop_pair_loop = property $ do
     (anfright, sfright) <- forAllWith (show . fst) makeRightSlider
     let anf = anfleft *** anfright
         sf = sfleft A.*** sfright
+    checkEqualTransform (anf, sf) (ins, ins')
+
+-- Test where an inner loop acts as the pre for an outer loop
+-- TODO: can we make a more complex version of this? e.g. when there's other things to tighten before the pre,
+-- when it's at the front of the loop instead of the back etc.
+prop_depends_pre :: Property
+prop_depends_pre = property $ do
+    (ins, ins') <- forAll genOneVals 
+    len <- forAll $ Gen.integral (Range.linear 1 3)
+    len' <- forAll $ Gen.integral (Range.linear 1 3)
+    (anfinner, sfinner) <- forAllWith (show . fst) $ genPairProg len
+    (anfouter, sfouter) <- forAllWith (show . fst) $ genPairProg len'
+    (anfdel, sfdel) <- forAll genPairVal 
+    let anf = loop (anfouter >>> second (loop (anfinner >>> pre anfdel)))
+        sf = A.loop (sfouter A.>>> A.second (A.loop (sfinner A.>>> iPre sfdel)))
+    checkEqualTransform (anf, sf) (ins, ins')
+
+-- Test where an inner LoopM is the pre of an outer loop.
+-- TODO: a test where it's a mix of Pre and LoopM
+prop_depends_loopM :: Property
+prop_depends_loopM = property $ do
+    (ins, ins') <- forAll genOneVals
+    (anf, sf) <- forAllWith (show . fst) makeLoopM
+    len <- forAll $ Gen.integral (Range.linear 1 3)
+    (anfouter, sfouter) <- forAllWith (show . fst) $ genPairProg len
+    let anf = loop (anfouter >>> second anf)
+        sf = A.loop (sfouter A.>>> A.second sf)
     checkEqualTransform (anf, sf) (ins, ins')
 
 -- TODO: benchmarks! Compare a large SF vs its ALP version.
