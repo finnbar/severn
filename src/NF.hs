@@ -126,7 +126,7 @@ instance Show (ANF a b) where
     show (Single f) = show f
 
 instance Show (NoComp a b) where
-    show (Loop f) = "Loop (" ++ show f ++ ")"
+    show (Loop f) = "Loop " ++ show f
     show (LoopD f dec) = "LoopD (" ++ show f ++ ") (" ++ show dec ++ ")"
     show (f :***: g) = "(" ++ show f ++ " *** " ++ show g ++ ")"
     show (Arr f) = "Arr"

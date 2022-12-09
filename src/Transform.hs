@@ -62,6 +62,7 @@ transformLoopD lb =
             Nothing -> case slide lb of
                 Just lb' -> sliding slide lb'
                 Nothing -> Left lb
+
 -- If this is in the form of a LoopD, make it so.
 -- Also apply left/right tightening.
 isLoopD :: ValidDesc a => LoopBox a b -> Maybe (ANF a b)
@@ -168,22 +169,31 @@ asDecoupled (f :***: g) = do
     return $ BothDec fd gd
 asDecoupled _ = Nothing
 
--- NOTE: In the paper we don't do fill/extract in left slides.
--- This is actually needed for degenerate cases where we can always left slide.
+-- The process for leftSlide is more complex than rightSlide, since we need to make a pre on the right side.
+-- 1. Right extract on the first term to get pre >>> nonpre.
+-- 2. Slide pre to the left.
+-- 3. Right fill on the last term to combine any pre that were on the last term with those in the new last term.
+-- 4. Left fill on the first term to fill the gaps left in nonpre. (TODO Is this needed?)
 leftSlide :: ValidDesc b => LoopBox a b -> Maybe (LoopBox a b)
-leftSlide lb = doLeftFill <$> (doLeftExtract lb >>= doLeftSlide)
+leftSlide lb = doLeftFill . doRightFill <$> (doRightExtract lb >>= doLeftSlide)
     where
-        doLeftExtract :: LoopBox a b -> Maybe (LoopBox a b)
-        doLeftExtract (LB anf) = case headTail anf of
+        doRightExtract :: LoopBox a b -> Maybe (LoopBox a b)
+        doRightExtract (LB anf) = case headTail anf of
             Left _ -> Nothing
             Right (HT s ss) -> case s of
-                s1 :***: s2 -> Just $ LB $ (Single s1 *** compTwoCompose (leftExtract s2)) >>> ss
+                s1 :***: s2 -> Just $ LB $ (Single s1 *** compTwoCompose (rightExtract s2)) >>> ss
                 _ -> Nothing
+        doRightFill :: LoopBox a b -> LoopBox a b
+        doRightFill (LB anf) = case initLast anf of
+            Left nc -> LB anf
+            Right (IL st u) -> case initLast st of
+                Left st' -> LB $ compTwoCompose (rightFill $ C2 st' u)
+                Right (IL s t) -> LB $ s >>> compTwoCompose (rightFill $ C2 t u)
         doLeftFill :: LoopBox a b -> LoopBox a b
         doLeftFill (LB anf) = case headTail anf of
             Left nc -> LB anf
             Right (HT s tu) -> case headTail tu of
-                Left tu' -> LB anf
+                Left tu' -> LB $ compTwoCompose (leftFill $ C2 s tu')
                 Right (HT t u) -> LB $ compTwoCompose (leftFill $ C2 s t) >>> u
         doLeftSlide :: ValidDesc b => LoopBox a b -> Maybe (LoopBox a b)
         doLeftSlide (LB anf) = case headTail anf of
@@ -197,6 +207,10 @@ leftSlide lb = doLeftFill <$> (doLeftExtract lb >>= doLeftSlide)
                 -- impossible to slide
                 _ -> Nothing
 
+-- The process is as follows:
+-- 1. Get the term next to the second output of the loop body, and split it into pre >>> nonpre using right extract.
+-- 2. Right slide the nonpre, since it will not help.
+-- 3. Use right fill to fill in any gaps in pre with parts of the term before it.
 rightSlide :: ValidDesc a => LoopBox a b -> Maybe (LoopBox a b)
 rightSlide lb = doRightFill <$> (doRightExtract lb >>= doRightSlide)
     where
@@ -210,7 +224,7 @@ rightSlide lb = doRightFill <$> (doRightExtract lb >>= doRightSlide)
         doRightFill (LB anf) = case initLast anf of
             Left nc -> LB anf
             Right (IL st u) -> case initLast st of
-                Left st' -> LB anf
+                Left st' -> LB $ compTwoCompose (rightFill $ C2 st' u)
                 Right (IL s t) -> LB $ s >>> compTwoCompose (rightFill $ C2 t u)
         doRightSlide :: ValidDesc a => LoopBox a b -> Maybe (LoopBox a b)
         doRightSlide (LB anf) = case initLast anf of

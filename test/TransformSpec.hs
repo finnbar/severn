@@ -32,14 +32,12 @@ removeDesc (Pair a b) = (removeDesc a, removeDesc b)
 checkEqualTransform :: (Eq (Simplify a), Eq (Simplify b), Show (Simplify b), ValidDesc a, ValidDesc b) =>
     (ANF a b, SF (Simplify a) (Simplify b)) -> ([Val a], [Simplify a]) -> PropertyT IO ()
 checkEqualTransform (anf, sf) (ins, ins') = do
-    res <- liftIO $ timeout 1000000 $ do
-        -- Strictness required to force these to calculate (and thus fail the timeout)
-        let sfres = embed sf (deltaEncode 1 ins')
-            !anf' = transform anf
-            anfres = map removeDesc $ multiRun runANF anf' ins
-        return (sfres, anfres)
-    case res of
-        Just (sfres, anfres) -> sfres === anfres
+    let sfres = embed sf (deltaEncode 1 ins')
+    anf' <- liftIO $ timeout 1000000 $ return $! transform anf
+    case anf' of
+        Just anf'' -> do
+            let anfres = map removeDesc $ multiRun runANF anf'' ins
+            sfres === anfres
         Nothing -> footnote "Test timed out." >> failure
 
 -- This makes sure that `transform` leaves programs without loops entirely unaffected.
@@ -206,9 +204,9 @@ prop_depends_loopM = property $ do
     (anf, sf) <- forAllWith (show . fst) makeLoopM
     len <- forAll $ Gen.integral (Range.linear 1 3)
     (anfouter, sfouter) <- forAllWith (show . fst) $ genPairProg len
-    let anf = loop (anfouter >>> second anf)
-        sf = A.loop (sfouter A.>>> A.second sf)
-    checkEqualTransform (anf, sf) (ins, ins')
+    let anf' = loop (anfouter >>> second anf)
+        sf' = A.loop (sfouter A.>>> A.second sf)
+    checkEqualTransform (anf', sf') (ins, ins')
 
 -- TODO: benchmarks! Compare a large SF vs its ALP version.
 
