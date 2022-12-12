@@ -64,13 +64,16 @@ test-suite loop-compile-test
   type: exitcode-stdio-1.0
   main-is: Spec.hs
   other-modules:
-      ArrowNFGen
       ArrowNFSpec
-      TestHelpers
       TransformSpec
+      ArrowNFGen
+      LoopGen
+      ProgramGen
+      TestHelpers
       Paths_loop_compile
   hs-source-dirs:
       test
+      gen
   ghc-options: -threaded -rtsopts -with-rtsopts=-N
   build-depends:
       Yampa
@@ -85,11 +88,14 @@ benchmark bench-vs-yampa
   type: exitcode-stdio-1.0
   main-is: Bench.hs
   other-modules:
+      ArrowNFGen
+      LoopGen
       ProgramGen
       TestHelpers
       Paths_loop_compile
   hs-source-dirs:
       benchmark
+      gen
   ghc-options: -O2 -threaded -rtsopts -with-rtsopts=-N
   build-depends:
       Yampa

@@ -47,7 +47,9 @@ executables:
 tests:
   loop-compile-test:
     main:                Spec.hs
-    source-dirs:         test
+    source-dirs:
+    - test
+    - gen
     ghc-options:
     - -threaded
     - -rtsopts
@@ -60,7 +62,9 @@ tests:
 benchmarks:
   bench-vs-yampa:
     main:               Bench.hs
-    source-dirs:        benchmark
+    source-dirs:
+    - benchmark
+    - gen
     ghc-options:
     - -O2
     - -threaded

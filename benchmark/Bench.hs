@@ -15,20 +15,19 @@ import ProgramGen
 import TestHelpers
 import Run
 
--- TODO: These tests are too small to give meaningful results. Increase something.
 main :: IO ()
 main = do
-    (!anf, !sf) <- sample makeLargeLoopsRight
-    let !alp = transform anf
-    !calp <- compile alp
-    --(alp100, sf100) <- sample $ genInputSamples 100
-    (alp1000, sf1000) <- sample $ genInputSamples 1000
-    (alp10000, sf10000) <- sample $ genInputSamples 10000
+    (!anf, !sf) <- sample $ makeMassiveNestedLoop 100
+    let !anf' = transform anf
+    !canf <- compile anf'
+    --(anf100, sf100) <- sample $ genInputSamples 100
+    (anf1000, sf1000) <- sample $ genInputSamples 10000
+    (anf10000, sf10000) <- sample $ genInputSamples 100000
     defaultMain [
-            bgroup "alp" [
-                --bench "100" $ nf (map simplify . multiRun runALP alp) alp100,
-                bench "1000" $ nf (map simplify . multiRun runALP alp) alp1000,
-                bench "10000" $ nf (map simplify . multiRun runALP alp) alp10000
+            bgroup "anf" [
+                --bench "100" $ nf (map simplify . multiRun runanf anf) anf100,
+                bench "10000" $ nf (map simplify . multiRun runANF anf') anf1000,
+                bench "100000" $ nf (map simplify . multiRun runANF anf') anf10000
             ],
             bgroup "sf" [
                 --bench "100" $ nf (embed sf) (deltaEncode 1 sf100),

@@ -10,6 +10,7 @@ import qualified Hedgehog.Range as Range
 import ArrowNF
 import Transform
 import TestHelpers
+import LoopGen
 import Run
 
 import FRP.Yampa (deltaEncode, embed, SF, iPre)
@@ -57,33 +58,12 @@ prop_transform_trivial = property $ do
     (del, del') <- forAll genOneVal
     checkEqualTransform (loop $ anf >>> second (pre del), A.loop $ sf A.>>> A.second (iPre del')) (ins, ins')
 
-makeRightSlider :: Gen (ANF (V Int) (V Int), SF Int Int)
-makeRightSlider = do
-    pairLen <- Gen.integral (Range.linear 1 10)
-    singleLen <- Gen.integral (Range.linear 1 5)
-    (anfmain, sfmain) <- genPairProg pairLen
-    (anftail, sftail) <- genSingleProg singleLen
-    (del, del') <- genOneVal
-    return (loop $ anfmain >>> second (pre del >>> anftail), A.loop $ sfmain A.>>> A.second (iPre del' A.>>> sftail))
-
 -- This makes sure that simple right slides can be used to move the `pre` into position.
 prop_right_slide :: Property
 prop_right_slide = property $ do
     (ins, ins') <- forAll genOneVals
     (anf, sf) <- forAllWith (show . fst) makeRightSlider
     checkEqualTransform (anf, sf) (ins, ins')
-
-mergeANF :: ANF (P (V Int) (V Int)) (V Int)
-mergeANF = arr $ \(Pair (One a) (One b)) -> One $ a + b
-
-splitANF :: ANF (V Int) (P (V Int) (V Int))
-splitANF = arr $ \(One a) -> Pair (One a) (One a)
-
-mergeSF :: SF (Int, Int) Int
-mergeSF = A.arr $ uncurry (+)
-
-splitSF :: SF Int (Int, Int)
-splitSF = A.arr $ \x -> (x,x)
 
 -- This makes sure that we are able to extract the correct value for a pre even
 -- when it is a pair - i.e. a loop ending in second (pre i *** pre j) correctly
@@ -101,17 +81,6 @@ prop_pre_merge = property $ do
         sf = A.loop $ A.second mergeSF A.>>> sfmain A.>>> A.second (splitSF A.>>> iPre del' A.>>> sftail)
     checkEqualTransform (anf, sf) (ins, ins')
 
-makeRightCrusher :: Gen (ANF (V Int) (V Int), SF Int Int)
-makeRightCrusher = do
-    pairLen <- Gen.integral (Range.linear 1 10)
-    singleLen <- Gen.integral (Range.linear 1 2)
-    (anfmain, sfmain) <- genPairProg pairLen
-    (anftail, sftail) <- genSingleProg singleLen
-    (crush, crush') <- genCrushable
-    let anf = loop $ anfmain >>> second (splitANF >>> crush >>> mergeANF >>> anftail)
-        sf = A.loop $ sfmain A.>>> A.second (splitSF A.>>> crush' A.>>> mergeSF A.>>> sftail)
-    return (anf, sf)
-
 -- This makes sure that the right crush property is applied - i.e. if we have
 -- (a *** b) >>> (id *** c)
 -- we get
@@ -123,33 +92,12 @@ prop_right_crush = property $ do
     (anf, sf) <- forAllWith (show . fst) makeRightCrusher
     checkEqualTransform (anf, sf) (ins, ins')
 
-makeLeftSlider :: Gen (ANF (V Int) (V Int), SF Int Int)
-makeLeftSlider = do
-    pairLen <- Gen.integral (Range.linear 1 10)
-    singleLen <- Gen.integral (Range.linear 1 5)
-    (anfmain, sfmain) <- genPairProg pairLen
-    (anfhead, sfhead) <- genSingleProg singleLen
-    (del, del') <- genOneVal
-    return (loop $ second (anfhead >>> pre del) >>> anfmain, A.loop $ A.second (sfhead A.>>> iPre del') A.>>> sfmain)
-
 -- This makes sure that simple left slides can be used to move the `pre` into position.
 prop_left_slide :: Property
 prop_left_slide = property $ do
     (ins, ins') <- forAll genOneVals
     (anf, sf) <- forAllWith (show . fst) makeLeftSlider
     checkEqualTransform (anf, sf) (ins, ins')
-
-makeLoopM :: Gen (ANF (V Int) (V Int), SF Int Int)
-makeLoopM = do
-    leftLen <- Gen.integral (Range.linear 1 3)
-    rightLen <- Gen.integral (Range.linear 1 3)
-    (anfleft, sfleft) <- genPairProg leftLen
-    (anfright, sfright) <- genPairProg rightLen
-    (del, del') <- genPairVal
-    return (
-            loop $ anfleft >>> pre del >>> anfright,
-            A.loop $ sfleft A.>>> iPre del' A.>>> sfright
-        )
 
 prop_loopM :: Property
 prop_loopM = property $ do
@@ -207,8 +155,6 @@ prop_depends_loopM = property $ do
     let anf' = loop (anfouter >>> second anf)
         sf' = A.loop (sfouter A.>>> A.second sf)
     checkEqualTransform (anf', sf') (ins, ins')
-
--- TODO: benchmarks! Compare a large SF vs its ALP version.
 
 transformSpec :: Group
 transformSpec = $$(discover) {groupName = "Transform produces equivalent programs"}
