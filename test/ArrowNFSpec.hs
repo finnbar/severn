@@ -6,6 +6,8 @@ module ArrowNFSpec (arrowNFSpec) where
 import Hedgehog
 import qualified Hedgehog.Gen as Gen
 import qualified Hedgehog.Range as Range
+import Test.Tasty.Hedgehog (fromGroup)
+import Test.Tasty (TestTree)
 
 import Data.Proxy (Proxy(..))
 
@@ -37,5 +39,5 @@ prop_no_pre_pairs = property $ do
     (clean, dirty) <- forAll $ genNCompsWithPrePairs len
     clean === dirty
 
-arrowNFSpec :: Group
-arrowNFSpec = $$(discover) {groupName = "ArrowNF invariants hold"}
+arrowNFSpec :: TestTree
+arrowNFSpec = fromGroup $ $$(discover) {groupName = "ArrowNF invariants hold"}

@@ -6,6 +6,8 @@ module TransformSpec (transformSpec) where
 import Hedgehog
 import qualified Hedgehog.Gen as Gen
 import qualified Hedgehog.Range as Range
+import Test.Tasty.Hedgehog (fromGroup)
+import Test.Tasty (TestTree, localOption, Timeout(Timeout))
 
 import ArrowNF
 import Transform
@@ -15,8 +17,6 @@ import Run
 
 import FRP.Yampa (deltaEncode, embed, SF, iPre)
 import qualified Control.Arrow as A
-import System.Timeout
-import Control.Monad.IO.Class
 
 -- * Test `transform`.
 -- General idea is to test a prewritten program against a Yampa equivalent.
@@ -34,12 +34,9 @@ checkEqualTransform :: (Eq (Simplify a), Eq (Simplify b), Show (Simplify b), Val
     (ANF a b, SF (Simplify a) (Simplify b)) -> ([Val a], [Simplify a]) -> PropertyT IO ()
 checkEqualTransform (anf, sf) (ins, ins') = do
     let sfres = embed sf (deltaEncode 1 ins')
-    anf' <- liftIO $ timeout 1000000 $ return $! transform anf
-    case anf' of
-        Just anf'' -> do
-            let anfres = map removeDesc $ multiRun runANF anf'' ins
-            sfres === anfres
-        Nothing -> footnote "Test timed out." >> failure
+        !anf' = transform anf
+    let anfres = map removeDesc $ multiRun runANF anf' ins
+    sfres === anfres
 
 -- This makes sure that `transform` leaves programs without loops entirely unaffected.
 prop_transform_noloop :: Property
@@ -156,5 +153,6 @@ prop_depends_loopM = property $ do
         sf' = A.loop (sfouter A.>>> A.second sf)
     checkEqualTransform (anf', sf') (ins, ins')
 
-transformSpec :: Group
-transformSpec = $$(discover) {groupName = "Transform produces equivalent programs"}
+transformSpec :: TestTree 
+transformSpec = localOption (Timeout 1000000 "1s") $
+    fromGroup $ $$(discover) {groupName = "Transform produces equivalent programs"}

@@ -57,6 +57,8 @@ tests:
     dependencies:
     - loop-compile
     - hedgehog
+    - tasty
+    - tasty-hedgehog
     - Yampa
 
 benchmarks:

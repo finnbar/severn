@@ -80,6 +80,8 @@ test-suite loop-compile-test
     , base >=4.7 && <5
     , hedgehog
     , loop-compile
+    , tasty
+    , tasty-hedgehog
     , template-haskell
     , unliftio-core
   default-language: Haskell2010

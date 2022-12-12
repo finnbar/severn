@@ -1,12 +1,10 @@
-{-# LANGUAGE BangPatterns #-}
-
-import Hedgehog
+import Test.Tasty
 
 import ArrowNFSpec
 import TransformSpec
 
-import System.Exit (exitFailure)
-import Control.Monad
+-- TODO: Give our tests better descriptions.
+-- use testPropertyNamed "human-readable" "prop_name" prop_name
 
 main :: IO ()
 main = do
