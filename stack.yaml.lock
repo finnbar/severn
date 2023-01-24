@@ -7,21 +7,20 @@ packages:
 - completed:
     hackage: hedgehog-1.0.5@sha256:a14356de69470b7e3966a65cd887c15b168d76ec7892c45cf0e23fea788fdbdc,4533
     pantry-tree:
-      size: 2575
       sha256: f40c711c1b9bca36d0ebff5175fb4b1a5bf1279ae04f3d2e4c1f0afd9cfc53b5
+      size: 2575
   original:
     hackage: hedgehog-1.0.5
 - completed:
     hackage: Yampa-0.13.5@sha256:0790e40a977ece8add63949fa6313018e75803d45e717d2e7f0078391e14440d,6263
     pantry-tree:
-      size: 2168
       sha256: ac15337f5e1200eb6e8f2df0b275a11a462012474b2e7b054dc8f5a7ccf8990c
+      size: 2168
   original:
     hackage: Yampa-0.13.5
 snapshots:
 - completed:
-    size: 618952
-    url: https://raw.githubusercontent.com/commercialhaskell/stackage-snapshots/master/lts/19/15.yaml
-    sha256: 82e5ccb47b068521de4055034e8aa278eab430b586881d9cc29ba8b382ce3253
-  original:
-    url: https://raw.githubusercontent.com/commercialhaskell/stackage-snapshots/master/lts/19/15.yaml
+    sha256: bfafe5735ccb74527d754b1f9999ded72d7c3a6c3a88529449661431ccfbd6cc
+    size: 649327
+    url: https://raw.githubusercontent.com/commercialhaskell/stackage-snapshots/master/lts/20/8.yaml
+  original: lts-20.8

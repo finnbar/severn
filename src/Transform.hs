@@ -24,9 +24,25 @@ transform (Single g) = Single g
 -- If we have a composition, transform the elements of the composition.
 transform (f :>>>: g) = transform f >>> transform g
 
+-- TODO:
+-- Add NoLoop check
+-- Implement split (with push/fill/extract implemented clearly)
+-- Reimplement transformX accordingly
+
 -- The main transformation algorithm. Tries to transform to LoopM, and then LoopD.
 transformLoop :: (ValidDesc a, ValidDesc b) => LoopBox a b -> ANF a b
 transformLoop lb = fromJust $ transformLoopM lb <|> transformLoopD lb
+
+-- Attempt to apply loop (f *** g) = f, thus avoiding the problem altogether.
+-- Since we have >>> at the top level, we need to check each part for ***.
+transformNoLoop :: (ValidDesc a, ValidDesc b) => LoopBox a b -> Maybe (ANF a b)
+transformNoLoop (LB anf) = getFirstComp anf
+    where
+        getFirstComp :: (ValidDesc a, ValidDesc b, ValidDesc c, ValidDesc d)
+            => ANF (P a b) (P c d) -> Maybe (ANF a c)
+        getFirstComp (Single (f :***: g)) = Just (Single f)
+        getFirstComp (Single (Dec (BothDec f g))) = Just (Single (Dec f))
+        getFirstComp _ = Nothing -- TODO: THIS DOES NOT WORK
 
 transformLoopM :: (ValidDesc a, ValidDesc b) => LoopBox a b -> Maybe (ANF a b)
 transformLoopM (LB anf) = transformLoopM' id_ anf 
