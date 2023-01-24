@@ -5,22 +5,22 @@
 
 packages:
 - completed:
-    hackage: hedgehog-1.0.5@sha256:a14356de69470b7e3966a65cd887c15b168d76ec7892c45cf0e23fea788fdbdc,4533
+    hackage: hedgehog-1.2@sha256:b7abfb2db7638c50eb8ee76186ee627ea7ab187220e4ea966b5738a1bde3b22a,4496
     pantry-tree:
-      sha256: f40c711c1b9bca36d0ebff5175fb4b1a5bf1279ae04f3d2e4c1f0afd9cfc53b5
-      size: 2575
+      sha256: 88d4d31c94383a956d551a6d4ff1d6eddeaad17b5b97d2db7118a20965223285
+      size: 2713
   original:
-    hackage: hedgehog-1.0.5
+    hackage: hedgehog-1.2
 - completed:
-    hackage: Yampa-0.13.5@sha256:0790e40a977ece8add63949fa6313018e75803d45e717d2e7f0078391e14440d,6263
+    hackage: Yampa-0.14@sha256:1bc26f97ad31e33217f7754cd34fd35239613e0397ab2670c2448b48d0675889,6673
     pantry-tree:
-      sha256: ac15337f5e1200eb6e8f2df0b275a11a462012474b2e7b054dc8f5a7ccf8990c
+      sha256: b1e8a3998a35b523f768c98dc664094d62bcdb8299fe728c1e2b951b2fc70296
       size: 2168
   original:
-    hackage: Yampa-0.13.5
+    hackage: Yampa-0.14
 snapshots:
 - completed:
-    sha256: 6d1532d40621957a25bad5195bfca7938e8a06d923c91bc52aa0f3c41181f2d4
-    size: 619204
-    url: https://raw.githubusercontent.com/commercialhaskell/stackage-snapshots/master/lts/19/33.yaml
-  original: lts-19.33
+    sha256: d35e616d8d3a34ed58b98ef0eb5df6e65e85067b72ee68547f7123eea4b35713
+    size: 595937
+    url: https://raw.githubusercontent.com/commercialhaskell/stackage-snapshots/master/nightly/2023/1/24.yaml
+  original: nightly-2023-01-24
