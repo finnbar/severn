@@ -153,6 +153,17 @@ prop_depends_loopM = property $ do
         sf' = A.loop (sfouter A.>>> A.second sf)
     checkEqualTransform (anf', sf') (ins, ins')
 
+prop_transform_into_noloop :: Property
+prop_transform_into_noloop = property $ do
+    len <- forAll $ Gen.integral (Range.linear 1 3)
+    len' <- forAll $ Gen.integral (Range.linear 1 3)
+    (ins, ins') <- forAll genOneVals
+    (anf1, sf1) <- forAllWith (show . fst) $ genSingleProg len
+    (anf2, sf2) <- forAllWith (show . fst) $ genSingleProg len'
+    let anf' = loop (anf1 *** anf2)
+        sf' = A.loop (sf1 A.*** sf2)
+    checkEqualTransform (anf', sf') (ins, ins')
+
 transformSpec :: TestTree 
 transformSpec = localOption (Timeout 1000000 "1s") $
     fromGroup $ $$(discover) {groupName = "Transform produces equivalent programs"}
