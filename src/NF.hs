@@ -80,6 +80,16 @@ removeId (f :>>>: g) =
         isSingleId (Single f) = isId f
         isSingleId _ = Nothing
 
+data UnPar a b where
+    UP :: (ValidDesc a, ValidDesc b, ValidDesc w, ValidDesc x, ValidDesc y, ValidDesc z) =>
+        NoComp w x -> NoComp y z -> (a :~~: P w y) -> (b :~~: P x z) -> UnPar a b
+
+unPar :: (ValidDesc a, ValidDesc b) =>
+    NoComp a b -> Maybe (UnPar a b)
+unPar (f :***: g) = Just $ UP f g HRefl HRefl
+unPar (Dec (BothDec f g)) = Just $ UP (Dec f) (Dec g) HRefl HRefl
+unPar _ = Nothing
+
 infixl 3 :***:
 type NoComp :: forall s s'. Desc s -> Desc s' -> *
 data NoComp x y where
