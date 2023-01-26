@@ -7,6 +7,7 @@ import Data.Maybe (fromJust)
 import Control.Applicative
 import Data.Type.Equality (type (:~~:)(..))
 import Data.Proxy
+import Debug.Trace
 
 data LoopBox a b where
     LB :: ValidDesc c => ANF (P a c) (P b c) -> LoopBox a b
@@ -150,6 +151,9 @@ data CompThree a d where
     C3 :: (ValidDesc a, ValidDesc b, ValidDesc c, ValidDesc d) =>
         NoComp a b -> NoComp b c -> NoComp c d -> CompThree a d
 
+instance Show (CompThree a d) where
+    show (C3 a b c) = show a ++ " " ++ show b ++ " " ++ show c
+
 displace :: (ValidDesc a, ValidDesc b) => CompTwo a b -> CompThree a b
 displace (C2 (f :***: g) (h :***: i)) = compThreePar (displace (C2 f h)) (displace (C2 g i))
     where
@@ -157,7 +161,7 @@ displace (C2 (f :***: g) (h :***: i)) = compThreePar (displace (C2 f h)) (displa
         compThreePar (C3 f1 f2 f3) (C3 g1 g2 g3) = C3 (f1 :***: g1) (f2 :***: g2) (f3 :***: g3)
 displace (C2 f d) = case asDecoupled d of
     Nothing -> C3 (generateId (Proxy :: Proxy a)) f d
-    Just _ -> C3 f d (generateId (Proxy :: Proxy b))
+    Just d' -> C3 f (Dec d') (generateId (Proxy :: Proxy b))
 
 fill :: CompTwo a b -> CompTwo a b
 fill (C2 (f :***: g) (h :***: i)) =
@@ -184,21 +188,34 @@ asDecoupled _ = Nothing
 data SplitResult a d where
     SR :: (ValidDesc a, ValidDesc b, ValidDesc c, ValidDesc d) =>
         ANF a b -> Decoupled b c -> ANF c d -> SplitResult a d
+    
+instance Show (SplitResult a d) where
+    show (SR a d b) = show a ++ " " ++ show d ++ " " ++ show b
 
 split :: (ValidDesc a, ValidDesc b) => ANF a b -> Maybe (SplitResult a b)
 split = flip splitHelper id_
     where
         splitHelper :: (ValidDesc x, ValidDesc y, ValidDesc z) =>
             ANF x y -> ANF y z -> Maybe (SplitResult x z)
-        splitHelper anf ex = case initLast (push anf) of
+        splitHelper anf ex = traceShow anf $ case initLast (push anf) of
             -- If we only have one element, it must be the pre or we fail.
             Left f -> asDecoupled f >>= \dec -> Just (SR id_ dec ex)
             -- pres = pre v is equivalent to l = pre v
             -- (since extract (pre v) = pre v >>> id so pres = pre v)
-            Right (IL i l) -> case asDecoupled l of
-                Just dec -> Just (SR i dec ex)
+            Right (IL ini l) -> case asDecoupled l of
+                Just dec -> Just (SR ini dec ex)
                 -- Perform the extract
-                Nothing -> undefined -- TODO: slot in displace
+                Nothing ->
+                    -- TODO this is a correct implementation of incorrect theory.
+                    case initLast ini of
+                        Right (IL i ni) ->
+                            case displace (C2 ni l) of
+                                C3 n' i' l' ->
+                                    splitHelper (i >>> Single n' >>> Single i') (Single l' >>> ex)
+                        Left sing ->
+                            case displace (C2 sing l) of
+                                C3 n' i' l' ->
+                                    splitHelper (Single n' >>> Single i') (Single l' >>> ex)
 
 leftSlide :: ValidDesc b => LoopBox a b -> Maybe (LoopBox a b)
 leftSlide (LB anf) =

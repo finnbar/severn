@@ -1,18 +1,11 @@
+{-# LANGUAGE TypeOperators #-}
+
 module ArrowNF (module NF, module ArrowNF) where
 
 import NF
 
-import Data.Proxy
 import Prelude hiding (id)
-
--- TODO: Need to work out what this API is doing.
--- headTail (Single a) != headTail (id_ :>>>: Single a)
--- which means we can get different results for two of the same program.
--- But we need a base case for Id.
--- Maybe change the HeadTail / InitLast datatypes to have an Id case?
--- (You can't do this because it implies that a and c have the same kind.)
--- I think headTail / initLast :: Maybe (HeadTail a b)
--- (Nothing => it's just Id)
+import Data.Type.Equality (type (:~~:)(..))
 
 data HeadTail a c where
     HT :: (ValidDesc a, ValidDesc b, ValidDesc c) =>
@@ -23,7 +16,9 @@ data InitLast a c where
 
 headTail :: ANF a b -> Either (NoComp a b) (HeadTail a b)
 headTail (Single a) = Left a
-headTail (Single a :>>>: b) = Right $ HT a b
+headTail (Single a :>>>: b) = case isId a of
+    Just HRefl -> headTail b
+    Nothing -> Right $ HT a b
 headTail (a :>>>: b) = case headTail a of
         Right ht -> Right $ htCompose ht b
         Left a' -> Right $ HT a' b
@@ -34,7 +29,9 @@ headTail (a :>>>: b) = case headTail a of
 
 initLast :: ANF a b -> Either (NoComp a b) (InitLast a b)
 initLast (Single a) = Left a
-initLast (a :>>>: Single b) = Right $ IL a b
+initLast (a :>>>: Single b) = case isId b of
+    Just HRefl -> initLast a
+    Nothing -> Right $ IL a b
 initLast (a :>>>: b) = case initLast b of
         Right ht -> Right $ ilCompose a ht
         Left b' -> Right $ IL a b'

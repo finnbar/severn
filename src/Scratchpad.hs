@@ -15,10 +15,16 @@ outerl :: ANF (V Int) (V Int)
 outerl = loop $ second (pre (One 0) >>> arr (\(One x) -> One $ x + 1)) >>> first innerl >>> arr (\(Pair (One a) (One b)) -> Pair (One (a + b)) (One a))
 
 f :: ANF (V Int) (V Int)
-f = Single . Arr $ \(One x) -> One (x+1)
+f = Single fno
+
+fno :: NoComp ('V Int) ('V Int)
+fno = Arr $ \(One x) -> One (x+1)
 
 f' :: ANF (P (V Int) (V Int)) (P (V Int) (V Int))
-f' = Single . Arr $ \(Pair (One a) (One b)) -> Pair (One (a + b)) (One a)
+f' = Single fno'
+
+fno' :: NoComp ('P ('V Int) ('V Int)) ('P ('V Int) ('V Int))
+fno' = Arr $ \(Pair (One a) (One b)) -> Pair (One (a + b)) (One a)
 
 mergeANF :: ANF (P (V Int) (V Int)) (V Int)
 mergeANF = arr $ \(Pair (One a) (One b)) -> One $ a + b
