@@ -39,7 +39,7 @@ transformNoLoop (LB anf) = getFirstComp anf
         getFirstComp anf = case headTail anf of
             Left singl -> unPar singl >>= \(UP l r HRefl HRefl) -> Just (Single l)
             Right (HT a b) -> unPar a >>=
-                \(UP l r HRefl HRefl) -> (Single l :>>>:) <$> getFirstComp b
+                \(UP l r HRefl HRefl) -> (Single l >>>) <$> getFirstComp b
 
 transformLoopM :: (ValidDesc a, ValidDesc b) => LoopBox a b -> Maybe (ANF a b)
 transformLoopM (LB anf) = split anf >>=
@@ -80,16 +80,6 @@ tailForm (LB anf) = tailFormHelper anf id_ id_
                     Nothing -> TF (anf' >>> first tailL) tailR
                     Just (UP f g HRefl HRefl) ->
                         tailFormHelper i (Single f >>> tailL) (Single g >>> tailR)
-
--- If this is in the form of a LoopD, make it so.
--- Also apply left/right tightening.
-isLoopD :: ValidDesc a => LoopBox a b -> Maybe (ANF a b)
-isLoopD (LB anf) = case initLast anf of
-    Left (f :***: g) ->
-        asDecoupled g >>= Just . tightening (Single f *** id_)
-    Right (IL ss (f :***: g)) ->
-        asDecoupled g >>= Just . tightening (ss >>> (Single f *** id_))
-    _ -> Nothing
 
 -- Have to do this to allow for reasonable return types.
 data Tightening a f where
@@ -156,6 +146,19 @@ extract (Dec d) = C2 (Dec d) idNoComp
 extract (f :***: g) = compTwoPar (extract f) (extract g)
 extract f = C2 idNoComp f
 
+data CompThree a d where
+    C3 :: (ValidDesc a, ValidDesc b, ValidDesc c, ValidDesc d) =>
+        NoComp a b -> NoComp b c -> NoComp c d -> CompThree a d
+
+displace :: (ValidDesc a, ValidDesc b) => CompTwo a b -> CompThree a b
+displace (C2 (f :***: g) (h :***: i)) = compThreePar (displace (C2 f h)) (displace (C2 g i))
+    where
+        compThreePar :: CompThree x y -> CompThree x' y' -> CompThree (P x x') (P y y')
+        compThreePar (C3 f1 f2 f3) (C3 g1 g2 g3) = C3 (f1 :***: g1) (f2 :***: g2) (f3 :***: g3)
+displace (C2 f d) = case asDecoupled d of
+    Nothing -> C3 (generateId (Proxy :: Proxy a)) f d
+    Just _ -> C3 f d (generateId (Proxy :: Proxy b))
+
 fill :: CompTwo a b -> CompTwo a b
 fill (C2 (f :***: g) (h :***: i)) =
     compTwoPar (fill $ C2 f h) (fill $ C2 g i)
@@ -195,14 +198,7 @@ split = flip splitHelper id_
             Right (IL i l) -> case asDecoupled l of
                 Just dec -> Just (SR i dec ex)
                 -- Perform the extract
-                Nothing -> case extract l of
-                    C2 pres nonpre -> case isId nonpre of
-                        -- If nonpre = id, need to pushBack and then exclude what's left
-                        Just HRefl -> case initLast (pushBack anf) of
-                            Left f' -> splitHelper (Single f') ex
-                            Right (IL i l) -> splitHelper i (Single l >>> ex)
-                        -- Otherwise exclude nonpre
-                        Nothing -> splitHelper (i >>> Single pres) (Single nonpre >>> ex)
+                Nothing -> undefined -- TODO: slot in displace
 
 leftSlide :: ValidDesc b => LoopBox a b -> Maybe (LoopBox a b)
 leftSlide (LB anf) =

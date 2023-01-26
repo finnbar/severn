@@ -2,7 +2,17 @@ module ArrowNF (module NF, module ArrowNF) where
 
 import NF
 
+import Data.Proxy
 import Prelude hiding (id)
+
+-- TODO: Need to work out what this API is doing.
+-- headTail (Single a) != headTail (id_ :>>>: Single a)
+-- which means we can get different results for two of the same program.
+-- But we need a base case for Id.
+-- Maybe change the HeadTail / InitLast datatypes to have an Id case?
+-- (You can't do this because it implies that a and c have the same kind.)
+-- I think headTail / initLast :: Maybe (HeadTail a b)
+-- (Nothing => it's just Id)
 
 data HeadTail a c where
     HT :: (ValidDesc a, ValidDesc b, ValidDesc c) =>
