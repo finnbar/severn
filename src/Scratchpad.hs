@@ -41,3 +41,5 @@ dependsLoopM :: ANF (V Int) (V Int)
 dependsLoopM = loop dependsLoopMLB
 dependsLoopMLB :: ANF (P (V Int) (V Int)) (P (V Int) (V Int))
 dependsLoopMLB = f' >>> second (loop (f' >>> pre (Pair (One 0) (One 0)) >>> f'))
+
+trivialFail = loop $ (f *** f) >>> f' >>> second (pre (One 0))
