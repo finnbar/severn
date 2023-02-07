@@ -14,12 +14,6 @@ import qualified Control.Arrow as A
 import qualified Control.Category as C
 import LoopGen
 
-makeLargeLoopsRight :: Gen (ANF (V Int) (V Int), SF Int Int)
-makeLargeLoopsRight = do
-    (anfmain, sfmain) <- genPairProg 100
-    (anftail, sftail) <- genSingleProg 100
-    return (loop $ anfmain >>> second (pre (One 0) >>> anftail), A.loop $ sfmain A.>>> A.second (iPre 0 A.>>> sftail))
-
 -- TODO: nesting within the decoupled bits.
 makeMassiveNestedLoop :: Int -> Gen (ANF (V Int) (V Int), SF Int Int)
 makeMassiveNestedLoop 0 = Gen.constant (id_, C.id)

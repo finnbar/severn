@@ -15,6 +15,11 @@ import Data.Proxy (Proxy(..))
 import ArrowNF
 import TestHelpers
 
+-- Generates a pair of ANFs: one of the form
+-- ((a1 >>> ... >>> z1) *** (a2 >>> ... >>> z2))
+-- and another of the form
+-- ((a1 *** a2) >>> ... >>> (z1 *** z2)).
+-- We use this in @prop_distribute@.
 genDistributiveTest :: Int ->
     Gen (ANF ('P ('V Int) ('V Int)) ('P ('V Int) ('V Int)),
         ANF ('P ('V Int) ('V Int)) ('P ('V Int) ('V Int)))
@@ -39,6 +44,8 @@ genDistributiveTest n
             f' <- fst <$> genSingle
             return ((l >>> f, r >>> f'), lr >>> (f *** f'))
 
+-- This generates two ANFs: a composition containing id, and one with
+-- those id removed.
 genNCompsWithId :: Int -> Gen (ANF ('V Int) ('V Int), ANF ('V Int) ('V Int))
 genNCompsWithId 1 = do
     sing <- fst <$> genSingle
@@ -53,31 +60,13 @@ genNCompsWithId n = do
     (rest, rest') <- genNCompsWithId (n-1)
     return (sing >>> rest, sing' >>> rest)
 
-genNCompsWithPairId :: Int ->
-    Gen (ANF ('P ('V Int) ('V Int)) ('P ('V Int) ('V Int)),
-    ANF ('P ('V Int) ('V Int)) ('P ('V Int) ('V Int)))
-genNCompsWithPairId 1 = do
-    pair <- fst <$> genPair
-    pair' <- Gen.element [
-            pair,
-            (id *** id) >>> pair,
-            pair >>> (id *** id),
-            pair >>> id,
-            id >>> pair
-        ]
-    return (pair, pair')
-genNCompsWithPairId n = do
-    (pair, pair') <- genNCompsWithPairId 1
-    (rest, rest') <- genNCompsWithPairId (n-1)
-    return (pair >>> rest, pair' >>> rest')
-
 genNCompsWithPrePairs :: Int ->
     Gen (ANF ('P ('V Int) ('V Int)) ('P ('V Int) ('V Int)),
     ANF ('P ('V Int) ('V Int)) ('P ('V Int) ('V Int)))
 genNCompsWithPrePairs 1 =
     Gen.choice [
-        dup <$> Gen.constant (arr $ \(Pair (One a) (One b)) -> Pair (One $ a + b) (One b)),
         genPrePair,
+        dup <$> Gen.constant (arr $ \(Pair (One a) (One b)) -> Pair (One $ a + b) (One b)),
         dup . first . fst <$> genSingle,
         dup . second . fst <$> genSingle
     ]
@@ -91,26 +80,3 @@ genNCompsWithPrePairs n = do
     (pair, pair') <- genNCompsWithPrePairs 1
     (rest, rest') <- genNCompsWithPrePairs (n-1)
     return (pair >>> rest, pair' >>> rest')
-
-type GenCrunchTrees :: forall s. Desc s -> Constraint
-class GenCrunchTrees a where
-    genCrunchTrees :: Proxy a ->
-        Gen ((ANF a a, ANF a a), -- left and right arguments to compose
-            (ANF a a, ANF a a)) -- those arguments after crunching
-
-instance GenCrunchTrees ('V Int) where
-    genCrunchTrees _ = Gen.choice [
-            do
-                lhs <- fst <$> genSingle
-                return ((lhs, id), (id, lhs)),
-            do
-                rhs <- fst <$> genSingle
-                return ((id, rhs), (id, rhs))
-        ]
-
-instance forall a b. (GenCrunchTrees a, GenCrunchTrees b, ValidDesc a, ValidDesc b)
-    => GenCrunchTrees ('P a b) where
-    genCrunchTrees _ = do
-        ((lt, rt), (lt', rt')) <- genCrunchTrees (Proxy :: Proxy a)
-        ((lb, rb), (lb', rb')) <- genCrunchTrees (Proxy :: Proxy b)
-        return ((lt *** lb, rt *** rb), (lt' *** lb', rt' *** rb'))

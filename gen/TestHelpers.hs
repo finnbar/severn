@@ -1,5 +1,5 @@
 {-# LANGUAGE DataKinds, GADTs, MultiParamTypeClasses,
-    ExplicitForAll, PolyKinds, FlexibleInstances #-}
+    ExplicitForAll, PolyKinds, FlexibleInstances, TypeFamilies, StandaloneKindSignatures #-}
 
 module TestHelpers where
 
@@ -10,6 +10,11 @@ import qualified Hedgehog.Range as Range
 import ArrowNF
 import qualified Control.Arrow as A
 import FRP.Yampa (SF, iPre)
+
+type Simplify :: forall s. Desc s -> *
+type family Simplify x where
+    Simplify (V a) = a
+    Simplify (P a b) = (Simplify a, Simplify b)
 
 multiRun :: (arr -> a -> (b, arr)) -> arr -> [a] -> [b]
 multiRun _ _ [] = []
@@ -103,3 +108,47 @@ genCrushable =
             (first (pre i) >>> second (pre j), A.first (iPre i') A.>>> A.second (iPre j')),
             -- second (pre j) >>> first (pre i)
             (second (pre j) >>> first (pre i), A.second (iPre j') A.>>> A.first (iPre i')) ]
+
+-- @partition2@ partitions an int into two factors which sum to that int.
+-- As long as i > 0, the first partition is guaranteed to be non-zero.
+partition2 :: Int -> Gen (Int, Int)
+partition2 i
+    | i >= 1 = do
+        p <- Gen.integral_ $ Range.constant 1 i
+        return (p, i-p)
+    | otherwise = return (0,0)
+
+partition3 :: Int -> Gen (Int, Int, Int)
+partition3 i = do
+    (x, p) <- partition2 i
+    (q, r) <- partition2 x
+    return (p, q, r)
+
+partition4 :: Int -> Gen (Int, Int, Int, Int)
+partition4 i = do
+    (x, p) <- partition2 i
+    (q, r, s) <- partition3 x
+    return (p, q, r, s)
+
+partition5 :: Int -> Gen (Int, Int, Int, Int, Int)
+partition5 i = do
+    (x, p) <- partition2 i
+    (q, r, s, t) <- partition4 x
+    return (p, q, r, s, t)
+
+chooseAndTry :: [Gen (Maybe a)] -> Gen (Maybe a)
+chooseAndTry gens = Gen.shuffle gens >>= tryAll
+    where
+        tryAll :: [Gen (Maybe a)] -> Gen (Maybe a)
+        tryAll [] = return Nothing
+        tryAll (x : xs) = do
+            vx <- x
+            case vx of
+                Just res -> return (Just res)
+                Nothing -> tryAll xs
+
+maybeMap :: Monad m => (a -> b -> c) -> m (Maybe a) -> m (Maybe b) -> m (Maybe c)
+maybeMap f lg rg = do
+    left <- lg
+    right <- rg
+    return $ f <$> left <*> right

@@ -1,5 +1,5 @@
 {-# LANGUAGE StandaloneKindSignatures, DataKinds, PolyKinds, RankNTypes,
-    FlexibleContexts, TypeOperators #-}
+    FlexibleContexts, TypeOperators, InstanceSigs, ScopedTypeVariables #-}
 
 module NF where
 
@@ -28,14 +28,17 @@ data Val x where
 class ValidDesc a where
     emptyVal :: Proxy a -> Val a
     generateId :: Proxy a -> NoComp a a
+    showArity :: Proxy a -> String
 
 instance ValidDesc (V a :: Desc *) where
     emptyVal _ = One undefined
     generateId _ = Id
+    showArity _ = "V"
 
-instance (ValidDesc a, ValidDesc b) => ValidDesc (P a b) where
+instance forall a b. (ValidDesc a, ValidDesc b) => ValidDesc (P a b) where
     emptyVal Proxy = Pair (emptyVal (Proxy :: Proxy a)) $ emptyVal (Proxy :: Proxy b)
     generateId Proxy = generateId (Proxy :: Proxy a) :***: generateId (Proxy :: Proxy b)
+    showArity (Proxy :: Proxy (P a b)) = "P(" ++ showArity (Proxy :: Proxy a) ++ ")(" ++ showArity (Proxy :: Proxy b) ++ ")"
 
 -- ArrowNormalForm, so we force >>> to be at the top level of each loop.
 -- Note that this may be at any stage of compilation, so could be a mix of
@@ -139,7 +142,7 @@ instance Show (NoComp a b) where
     show (Loop f) = "Loop " ++ show f
     show (LoopD f dec) = "LoopD (" ++ show f ++ ") (" ++ show dec ++ ")"
     show (f :***: g) = "(" ++ show f ++ " *** " ++ show g ++ ")"
-    show (Arr f) = "Arr"
+    show (Arr f) = "Arr" ++ showArityOf (Arr f)
     show Id = "Id"
     show (Dec d) = show d
 
@@ -147,6 +150,9 @@ instance Show (Decoupled a b) where
     show (BothDec f g) = "(" ++ show f ++ " *** " ++ show g ++ ")"
     show (LoopM f d g) = "LoopM (" ++ show f ++ ") (" ++ show d ++ ") (" ++ show g ++ ")"
     show (Pre v) = "Pre"
+
+showArityOf :: forall a b. (ValidDesc a, ValidDesc b) => NoComp a b -> String
+showArityOf _ = "[" ++ showArity (Proxy :: Proxy a) ++ "->" ++ showArity (Proxy :: Proxy b) ++ "]"
 
 -- * Eq instances
 

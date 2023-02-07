@@ -1,5 +1,6 @@
 {-# LANGUAGE TemplateHaskell, DataKinds, FlexibleContexts, StandaloneKindSignatures,
-    OverloadedStrings, GADTs, PolyKinds, TypeFamilies, ExplicitForAll, BangPatterns #-}
+    OverloadedStrings, GADTs, PolyKinds, TypeFamilies, ExplicitForAll, BangPatterns,
+    TypeApplications #-}
 
 module TransformSpec (transformSpec) where
 
@@ -14,19 +15,16 @@ import Transform
 import TestHelpers
 import LoopGen
 import Run
+import ArbitraryProgram
 
 import FRP.Yampa (deltaEncode, embed, SF, iPre)
 import qualified Control.Arrow as A
 import System.Timeout (timeout)
 import Control.Monad.IO.Class
+import Data.Maybe (fromJust)
 
 -- * Test `transform`.
 -- General idea is to test a prewritten program against a Yampa equivalent.
-
-type Simplify :: forall s. Desc s -> *
-type family Simplify x where
-    Simplify (V a) = a
-    Simplify (P a b) = (Simplify a, Simplify b)
 
 removeDesc :: Val a -> Simplify a
 removeDesc (One a) = a
@@ -170,6 +168,13 @@ prop_transform_into_noloop = property $ do
     let anf' = loop (anf1 *** anf2)
         sf' = A.loop (sf1 A.*** sf2)
     checkEqualTransform (anf', sf') (ins, ins')
+
+prop_arbitrary_program :: Property
+prop_arbitrary_program = property $ do
+    len <- forAll $ Gen.integral (Range.linear 10 15)
+    (ins, ins') <- forAll genOneVals
+    (anf, sf) <- forAllWith (show . fst) $ fromJust <$> Gen.choice [genLoopM @(V Int) @(V Int) len, genLoopD len (Gen.constant (Just genId)) (Gen.constant (Just genId))]
+    checkEqualTransform (anf, sf) (ins, ins')
 
 transformSpec :: TestTree 
 transformSpec = fromGroup $ $$(discover) {groupName = "Transform produces equivalent programs"}
