@@ -171,11 +171,27 @@ prop_transform_into_noloop = property $ do
 
 prop_arbitrary_program :: Property
 prop_arbitrary_program = property $ do
-    len <- forAll $ Gen.integral (Range.linear 1 15)
+    len <- forAll $ Gen.integral (Range.linear 1 150)
     (ins, ins') <- forAll genOneVals
-    (anf, sf) <- forAllWith (show . fst) $ Gen.just $ Gen.choice [
-        genLoopM ProxV ProxV len,
-        genLoopD ProxV ProxV len (Gen.constant (Just $ genId ProxV)) (Gen.constant (Just $ genId ProxV))]
+    (anf, sf) <- forAllWith (show . fst) $ Gen.just $ genProg ProxV ProxV (GP len Nothing)
+    checkEqualTransform (anf, sf) (ins, ins')
+
+prop_deep_program :: Property
+prop_deep_program = property $ do
+    len <- forAll $ Gen.integral (Range.linear 1 150)
+    depth <- forAll $ Gen.integral (Range.linear 1 10)
+    let structure = Just $ replicate depth 1
+    (ins, ins') <- forAll genOneVals
+    (anf, sf) <- forAllWith (show . fst) $ Gen.just $ genProg ProxV ProxV (GP len structure)
+    checkEqualTransform (anf, sf) (ins, ins')
+
+prop_shallow_program :: Property
+prop_shallow_program = property $ do
+    len <- forAll $ Gen.integral (Range.linear 1 150)
+    depth <- forAll $ Gen.integral (Range.linear 1 10)
+    let structure = Just [depth]
+    (ins, ins') <- forAll genOneVals
+    (anf, sf) <- forAllWith (show . fst) $ Gen.just $ genProg ProxV ProxV (GP len structure)
     checkEqualTransform (anf, sf) (ins, ins')
 
 transformSpec :: TestTree 

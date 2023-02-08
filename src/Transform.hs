@@ -25,7 +25,9 @@ transform (f :>>>: g) = transform f >>> transform g
 
 -- The main transformation algorithm. Tries to transform to LoopM, and then LoopD.
 transformLoop :: (ValidDesc a, ValidDesc b) => LoopBox a b -> ANF a b
-transformLoop lb = fromJust $ (transformNoLoop lb <|> transformLoopM lb) <|> transformLoopD lb
+transformLoop lb = case (transformNoLoop lb <|> transformLoopM lb) <|> transformLoopD lb of
+    Just anf -> anf
+    Nothing -> error (show lb)
 
 -- Attempt to apply loop (f *** g) = f, thus avoiding the problem altogether.
 -- Since we have >>> at the top level, we need to check each part for ***.
@@ -46,7 +48,7 @@ transformLoopD lb =
         LB anf -> case tailsForm anf of
             -- loop (f >>> (g *** h))
             TF f g h HRefl HRefl -> split h >>= \(SR hl d hr) ->
-                Just . Single $ LoopD (second hr >>> f >>> (g *** hl)) d
+                Just $ tightening (second hr >>> f >>> (g *** hl)) d
             -- OnlyTails should have been caught earlier by transformNoLoop.
             _ -> Nothing
     where
