@@ -31,6 +31,15 @@ pDescEq (ProxP a b) (ProxP a' b') = do
     return HRefl
 pDescEq _ _ = Nothing
 
+-- GENERATION PARAMETERS
+
+-- TODO: Actually use this.
+data GenParam = GP {
+        size :: Int, -- How many blocks we're allowed in the generated program.
+        loopCount :: Int, -- How many loops we're allowed to create.
+        branching :: Int -> (Int, Int) -- How to split loopCount between the loop we're creating and future loops.
+    }
+
 -- LOOP GENERATION
 
 -- Finally: generate the structure loop ((f *** g) >>> h >>> (i *** j)), where decoupledness of f, i doesn't matter.
@@ -39,6 +48,9 @@ pDescEq _ _ = Nothing
 -- 2. h is decoupled. j and g therefore can be decoupled but don't need to be.
 -- Assign a size to each of f, g, h, i, j when doing this which sums to our target size.
 -- Okay! This is doable.
+
+-- TODO Nested loop generation.
+-- 1. Add a loop count variable. Probably replace the Int input with some kind of size data type containing multiple fields. Use this to determine whether to nest.
 
 makeLoop :: (ValidDesc a, ValidDesc b, ValidDesc c)
     => Maybe (ANF (P a c) (P b c), SF (Simplify (P a c)) (Simplify (P b c)))
@@ -106,13 +118,12 @@ genProg pa pb l =
             | l == 1 = return . Just $ arbitraryFn pa pa
             | otherwise = case pa of
                 ProxV ->
-                    -- TODO Could have a LoopD
                     let (ll, lr) = halve l
                     in chooseAndTry [
                             maybeComp (genProg ProxV ProxV ll) (genProg ProxV ProxV lr),
-                            maybeComp (genProg ProxV (ProxP ProxV ProxV) ll) (genProg (ProxP ProxV ProxV) ProxV lr)]
+                            maybeComp (genProg ProxV (ProxP ProxV ProxV) ll) (genProg (ProxP ProxV ProxV) ProxV lr),
+                            genLoopD ProxV ProxV l (Gen.constant (Just $ genId ProxV)) (Gen.constant (Just $ genId ProxV))]
                 p@(ProxP a b) ->
-                    -- TODO Could have a LoopD with partial decoupling
                     let (ll, lr) = halve l
                     in chooseAndTry [
                             -- Same type
@@ -127,7 +138,8 @@ genProg pa pb l =
                             maybePar (genProg a a ll) (genProg b b lr),
                             -- They can be half decoupled
                             maybePar (genDecoupled a a ll) (genProg b b lr),
-                            maybePar (genProg a a ll) (genDecoupled b b lr)]
+                            maybePar (genProg a a ll) (genDecoupled b b lr),
+                            genLoopD p p l (Gen.constant (Just $ genId p)) (Gen.constant (Just $ genId p))]
         genProgDiffTypes :: (ValidDesc a, ValidDesc b) => PDesc a -> PDesc b -> Int -> Gen (Maybe (ANF a b, SF (Simplify a) (Simplify b)))
         genProgDiffTypes pa pb l
             | l < 1 = return Nothing
@@ -136,16 +148,19 @@ genProg pa pb l =
                 let (ll, lr) = halve l
                 in chooseAndTry [
                         maybeComp (genProg pa pa ll) (genProg pa pb lr),
-                        maybeComp (genProg pa pb ll) (genProg pb pb lr)]
+                        maybeComp (genProg pa pb ll) (genProg pb pb lr),
+                        genLoopD pa pb l (Gen.constant (Just $ genId pa)) (Gen.constant (Just $ genId pb))]
 
 genDecoupled :: (ValidDesc a, ValidDesc b) => PDesc a -> PDesc b -> Int -> Gen (Maybe (ANF a b, SF (Simplify a) (Simplify b)))
 genDecoupled pa pb l =
     case pDescEq pa pb of
         Just HRefl -> genDecoupledEqTypes pa l 
         Nothing -> if l < 2 then return Nothing else
-            -- TODO Could be LoopM, or LoopD with required decoupling
             let (ll, lr) = halve l
-            in chooseAndTry $ gensDecoupledPair pa pb pb ll lr ++ gensDecoupledPair pa pa pb ll lr
+                gens = gensDecoupledPair pa pb pb ll lr
+                    ++ gensDecoupledPair pa pa pb ll lr
+                    ++ [genLoopM pa pb l]
+            in chooseAndTry gens
     where
         genDecoupledEqTypes :: ValidDesc a => PDesc a -> Int -> Gen (Maybe (ANF a a, SF (Simplify a) (Simplify a)))
         genDecoupledEqTypes pa l
@@ -153,21 +168,43 @@ genDecoupled pa pb l =
             | l == 1 = return $ Just $ genPre pa
             | otherwise = case pa of
                 ProxV -> 
-                -- TODO Could also be LoopM
                     let (ll, lr) = halve l
                         gens = gensDecoupledPair ProxV ProxV ProxV ll lr
                             ++ gensDecoupledPair ProxV (ProxP ProxV ProxV) ProxV ll lr
+                            ++ [genLoopM ProxV ProxV l]
                     in chooseAndTry gens
                 p@(ProxP a b) ->
-                -- TODO Could also be LoopM, or LoopD providing the required decoupling
                     let (ll, lr) = halve l
                         gensC = gensDecoupledPair p p p ll lr ++
                                 gensDecoupledPair p a p ll lr ++
                                 gensDecoupledPair p b p ll lr ++
                                 gensDecoupledPair p (ProxP p ProxV) p ll lr ++
-                                gensDecoupledPair p (ProxP ProxV p) p ll lr
+                                gensDecoupledPair p (ProxP ProxV p) p ll lr ++
+                                [genLoopM p p l] ++
+                                genDecouplingWithinLoopD a b l
                         gensP = maybePar (genDecoupled a a ll) (genDecoupled b b lr)
                     in chooseAndTry $ gensP : gensC
+        genDecouplingWithinLoopD :: (ValidDesc a, ValidDesc b) => PDesc a -> PDesc b -> Int -> [Gen (Maybe (ANF (P a b) (P a b), SF (Simplify a, Simplify b) (Simplify a, Simplify b)))]
+        genDecouplingWithinLoopD pa pb l =
+            let (la, lb) = halve l
+                (ll, lr) = halve la
+                (ls, lt) = halve lb
+            in [
+                -- (nodec *** dec) >>> LoopD with (Pre *** f) left tightenable
+                -- nodec *** dec
+                maybeComp (maybePar (genProg pa pa ll) (genDecoupled pb pb lr))
+                    -- LoopD...
+                    (genLoopD (ProxP pa pb) (ProxP pa pb) ls
+                        -- with dec *** nodec
+                        (maybePar (genDecoupled pa pa lt) (Gen.constant $ Just $ genId pb)) (Gen.constant (Just $ genId (ProxP pa pb)))),
+                -- LoopD with (f *** Pre) right tightenable >>> (dec *** nodec)
+                -- LoopD...
+                maybeComp (genLoopD (ProxP pa pb) (ProxP pa pb) ls
+                    -- with right tightenable nodec *** dec
+                    (Gen.constant (Just $ genId (ProxP pa pb))) (maybePar (Gen.constant $ Just $ genId pa) (genDecoupled pb pb ll)))
+                    -- dec *** nodec
+                    (maybePar (genDecoupled pa pa lr) (genProg pb pb lt))
+                ]
 
 gensDecoupledPair :: (ValidDesc a, ValidDesc b, ValidDesc c) =>
     PDesc a -> PDesc b -> PDesc c -> Int -> Int -> [Gen (Maybe (ANF a c, SF (Simplify a) (Simplify c)))]
@@ -176,24 +213,6 @@ gensDecoupledPair pa pb pc ll lr = [
         maybeComp (genDecoupled pa pb ll) (genProg pb pc lr),
         maybeComp (genDecoupled pa pb ll) (genDecoupled pb pc lr)
     ]
-
--- NOTE TRYING TO IDENTIFY PATTERNS:
--- GenProg x x has
--- genProg picks some y and does maybeComp (genProg x y) (genProg y x)
--- genDecoupled does the same but picks one to be decoupled
--- If x is some kind of pair (q w), you also get the pairing versions:
--- maybePar (genProg q q) (genProg w w)
--- with decoupling as appropriate.
--- GenProg x y (x !~ y) has
--- genProg has maybeComp (genProg x y) (genProg y y) and maybeComp (genProg x x) (genProg x y)
--- and similar for genDecoupled.
--- Also in all cases we can have LoopD when not making something decoupled (note that f, i can be partially decoupled)
--- and LoopM when decoupled.
--- Need to add a way to count loops to avoid having too many.
--- 0. Replace the Proxy with a smarter argument, to avoid _1 etc
--- 1. Generalise to avoid all this excess code. Have a typeclass to specify ones we're allowed to generate for.
--- (Check this works.)
--- 2. Add Loops, likely changing genLoopD/M to take in the non-Proxy too.
 
 -- Split an int into two, the larger always being returned first.
 halve :: Int -> (Int, Int)
