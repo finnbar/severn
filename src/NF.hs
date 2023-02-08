@@ -17,7 +17,7 @@ data (<>) a b
 
 type Desc :: * -> *
 data Desc x where
-    V :: a -> Desc a
+    V :: a -> Desc (a :: *)
     P :: Desc a -> Desc b -> Desc (a <> b)
 
 type Val :: forall s. Desc s -> *

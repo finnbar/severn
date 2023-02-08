@@ -1,5 +1,5 @@
-{-# LANGUAGE DataKinds, GADTs, ScopedTypeVariables, TypeApplications, PolyKinds,
-    FlexibleInstances, MultiParamTypeClasses, FlexibleContexts #-}
+{-# LANGUAGE DataKinds, GADTs, ScopedTypeVariables, PolyKinds, TypeOperators,
+    FlexibleInstances, MultiParamTypeClasses, FlexibleContexts, StandaloneKindSignatures #-}
 
 module ArbitraryProgram where
 
@@ -14,8 +14,24 @@ import FRP.Yampa (SF, iPre)
 import qualified Control.Arrow as A
 import qualified Control.Category as C
 import Data.Maybe (fromJust)
-import Data.Proxy
-import Transform
+import Data.Type.Equality (type (:~~:)(..))
+
+-- A PROXY-LIKE FOR DESCRIPTORS
+
+type PDesc :: forall s. Desc s -> *
+data PDesc x where
+    ProxV :: PDesc (V Int)
+    ProxP :: (ValidDesc a, ValidDesc b) => PDesc a -> PDesc b -> PDesc (P a b)
+
+pDescEq :: PDesc a -> PDesc b -> Maybe (a :~~: b)
+pDescEq ProxV ProxV = Just HRefl
+pDescEq (ProxP a b) (ProxP a' b') = do
+    HRefl <- pDescEq a a'
+    HRefl <- pDescEq b b'
+    return HRefl
+pDescEq _ _ = Nothing
+
+-- LOOP GENERATION
 
 -- Finally: generate the structure loop ((f *** g) >>> h >>> (i *** j)), where decoupledness of f, i doesn't matter.
 -- Then either:
@@ -23,10 +39,6 @@ import Transform
 -- 2. h is decoupled. j and g therefore can be decoupled but don't need to be.
 -- Assign a size to each of f, g, h, i, j when doing this which sums to our target size.
 -- Okay! This is doable.
-
--- LOOP GENERATION
-
--- NOTE: We limit LoopD and LoopM to having at most two inputs.
 
 makeLoop :: (ValidDesc a, ValidDesc b, ValidDesc c)
     => Maybe (ANF (P a c) (P b c), SF (Simplify (P a c)) (Simplify (P b c)))
@@ -36,236 +48,152 @@ makeLoop myb = case myb of
     Nothing -> Nothing
 
 -- We refer to structure ((f *** g) >>> h >>> (i *** j))
-genLoopM :: forall a b. (GenProg (P a (V Int)) (P b (V Int)),
-    GenProg (P a (P (V Int) (V Int))) (P b (P (V Int) (V Int))),
-    ValidDesc a, ValidDesc b, Reduce a, Reduce b)
-    => Int -- size of loop (g, h, j)
+genLoopM :: forall a b. (ValidDesc a, ValidDesc b)
+    => PDesc a -> PDesc b
+    -> Int -- size of loop (g, h, j)
     -> Gen (Maybe (ANF a b, SF (Simplify a) (Simplify b))) -- Generator of LoopD
-genLoopM l = Gen.choice [
-        genLoopM' (Proxy :: Proxy (V Int)), -- One looped value
-        genLoopM' (Proxy :: Proxy (P (V Int) (V Int))) -- A pair of looped values
+genLoopM pa pb l = Gen.choice [
+        genLoopM' ProxV, -- One looped value
+        genLoopM' (ProxP ProxV ProxV) -- A pair of looped values
     ]
     where
-        genLoopM' :: forall s (v :: Desc s). (GenProg (P a v) (P b v), GenProg v v, ValidDesc v, Reduce a, Reduce b) =>
-            Proxy v -> Gen (Maybe (ANF a b, SF (Simplify a) (Simplify b)))
+        genLoopM' :: forall s (v :: Desc s). (ValidDesc v) =>
+            PDesc v -> Gen (Maybe (ANF a b, SF (Simplify a) (Simplify b)))
         genLoopM' pv = do
             -- A loop with looped value of type v
             let (ll, lr) = halve l
-                f = Gen.constant $ Just genId
-                i = Gen.constant $ Just genId
-                h = genDecoupled (Proxy :: Proxy (P a v)) (Proxy :: Proxy (P b v)) ll
+                f = Gen.constant $ Just $ genId pa
+                i = Gen.constant $ Just $ genId pb
+                h = genDecoupled (ProxP pa pv) (ProxP pb pv) ll
                 (lrl, lrr) = halve lr
                 g = genProg pv pv lrl
                 j = genProg pv pv lrr
             makeLoop <$> maybeComp (maybeComp (maybePar f g) h) (maybePar i j)
 
-genLoopD :: forall a b x y. (GenProg (P x (V Int)) (P y (V Int)),
-    GenProg (P x (P (V Int) (V Int))) (P y (P (V Int) (V Int))),
-    ValidDesc a, ValidDesc b, ValidDesc x, ValidDesc y)
-    => Int -- size of loop (g, h, j)
+genLoopD :: forall a b x y. (ValidDesc a, ValidDesc b, ValidDesc x, ValidDesc y)
+    => PDesc x -> PDesc y
+    -> Int -- size of loop (g, h, j)
     -> Gen (Maybe (ANF a x, SF (Simplify a) (Simplify x))) -- f
     -> Gen (Maybe (ANF y b, SF (Simplify y) (Simplify b))) -- i
     -> Gen (Maybe (ANF a b, SF (Simplify a) (Simplify b)))
-genLoopD l fgen igen = Gen.choice [
-        genLoopD' (Proxy :: Proxy (V Int)), -- One looped value
-        genLoopD' (Proxy :: Proxy (P (V Int) (V Int))) -- A pair of looped values
+genLoopD px py l fgen igen = Gen.choice [
+        genLoopD' ProxV, -- One looped value
+        genLoopD' (ProxP ProxV ProxV) -- A pair of looped values
     ]
     where
-        genLoopD' :: forall s (v :: Desc s). (GenProg (P x v) (P y v), GenProg v v, ValidDesc v, Reduce v) =>
-            Proxy v -> Gen (Maybe (ANF a b, SF (Simplify a) (Simplify b)))
+        genLoopD' :: forall s (v :: Desc s). (ValidDesc v) =>
+            PDesc v -> Gen (Maybe (ANF a b, SF (Simplify a) (Simplify b)))
         genLoopD' pv = do
             let (ll, lr) = halve l
                 f = fgen
                 i = igen
-                h = genProg (Proxy :: Proxy (P x v)) (Proxy :: Proxy (P y v)) ll
-                g = genDecoupled (Proxy :: Proxy v) (Proxy :: Proxy v) lr
-                j = Gen.constant $ Just genId
+                h = genProg (ProxP px pv) (ProxP py pv) ll
+                g = genDecoupled pv pv lr
+                j = Gen.constant . Just $ genId pv
             makeLoop <$> maybeComp (maybeComp (maybePar f g) h) (maybePar i j)
 
 -- CLASS FOR GENERATION
 
-class GenProg a b where
-    genProg :: Proxy a -> Proxy b -> Int -> Gen (Maybe (ANF a b, SF (Simplify a) (Simplify b)))
-    genDecoupled :: Proxy a -> Proxy b -> Int -> Gen (Maybe (ANF a b, SF (Simplify a) (Simplify b)))
+genProg :: (ValidDesc a, ValidDesc b) => PDesc a -> PDesc b -> Int -> Gen (Maybe (ANF a b, SF (Simplify a) (Simplify b)))
+genProg pa pb l =
+    case pDescEq pa pb of
+        Just HRefl -> genProgEqTypes pa l
+        Nothing -> genProgDiffTypes pa pb l
+    where
+        genProgEqTypes :: ValidDesc a => PDesc a -> Int -> Gen (Maybe (ANF a a, SF (Simplify a) (Simplify a)))
+        genProgEqTypes pa l
+            | l < 1 = return . Just $ genId pa
+            | l == 1 = return . Just $ arbitraryFn pa pa
+            | otherwise = case pa of
+                ProxV ->
+                    -- TODO Could have a LoopD
+                    let (ll, lr) = halve l
+                    in chooseAndTry [
+                            maybeComp (genProg ProxV ProxV ll) (genProg ProxV ProxV lr),
+                            maybeComp (genProg ProxV (ProxP ProxV ProxV) ll) (genProg (ProxP ProxV ProxV) ProxV lr)]
+                p@(ProxP a b) ->
+                    -- TODO Could have a LoopD with partial decoupling
+                    let (ll, lr) = halve l
+                    in chooseAndTry [
+                            -- Same type
+                            maybeComp (genProg p p ll) (genProg p p lr),
+                            -- Reduce down one size
+                            maybeComp (genProg p a ll) (genProg a p lr),
+                            maybeComp (genProg p b ll) (genProg b p lr),
+                            -- Go up one size
+                            maybeComp (genProg p (ProxP p ProxV) ll) (genProg (ProxP p ProxV) p lr),
+                            maybeComp (genProg p (ProxP ProxV p) ll) (genProg (ProxP ProxV p) p lr),
+                            -- Pair of the two inputs
+                            maybePar (genProg a a ll) (genProg b b lr),
+                            -- They can be half decoupled
+                            maybePar (genDecoupled a a ll) (genProg b b lr),
+                            maybePar (genProg a a ll) (genDecoupled b b lr)]
+        genProgDiffTypes :: (ValidDesc a, ValidDesc b) => PDesc a -> PDesc b -> Int -> Gen (Maybe (ANF a b, SF (Simplify a) (Simplify b)))
+        genProgDiffTypes pa pb l
+            | l < 1 = return Nothing
+            | l == 1 = return . Just $ arbitraryFn pa pb
+            | otherwise = 
+                let (ll, lr) = halve l
+                in chooseAndTry [
+                        maybeComp (genProg pa pa ll) (genProg pa pb lr),
+                        maybeComp (genProg pa pb ll) (genProg pb pb lr)]
 
--- Helper proxies to avoid long annotations throughout the code.
-_1 :: Proxy (V Int)
-_1 = Proxy
-_2 :: Proxy (P (V Int) (V Int))
-_2 = Proxy
-_3a :: Proxy (P (P (V Int) (V Int)) (V Int))
-_3a = Proxy
-_3b :: Proxy (P (V Int) (P (V Int) (V Int)))
-_3b = Proxy
-_4 :: Proxy (P (P (V Int) (V Int)) (P (V Int) (V Int)))
-_4 = Proxy
+genDecoupled :: (ValidDesc a, ValidDesc b) => PDesc a -> PDesc b -> Int -> Gen (Maybe (ANF a b, SF (Simplify a) (Simplify b)))
+genDecoupled pa pb l =
+    case pDescEq pa pb of
+        Just HRefl -> genDecoupledEqTypes pa l 
+        Nothing -> if l < 2 then return Nothing else
+            -- TODO Could be LoopM, or LoopD with required decoupling
+            let (ll, lr) = halve l
+            in chooseAndTry $ gensDecoupledPair pa pb pb ll lr ++ gensDecoupledPair pa pa pb ll lr
+    where
+        genDecoupledEqTypes :: ValidDesc a => PDesc a -> Int -> Gen (Maybe (ANF a a, SF (Simplify a) (Simplify a)))
+        genDecoupledEqTypes pa l
+            | l < 1 = return Nothing
+            | l == 1 = return $ Just $ genPre pa
+            | otherwise = case pa of
+                ProxV -> 
+                -- TODO Could also be LoopM
+                    let (ll, lr) = halve l
+                        gens = gensDecoupledPair ProxV ProxV ProxV ll lr
+                            ++ gensDecoupledPair ProxV (ProxP ProxV ProxV) ProxV ll lr
+                    in chooseAndTry gens
+                p@(ProxP a b) ->
+                -- TODO Could also be LoopM, or LoopD providing the required decoupling
+                    let (ll, lr) = halve l
+                        gensC = gensDecoupledPair p p p ll lr ++
+                                gensDecoupledPair p a p ll lr ++
+                                gensDecoupledPair p b p ll lr ++
+                                gensDecoupledPair p (ProxP p ProxV) p ll lr ++
+                                gensDecoupledPair p (ProxP ProxV p) p ll lr
+                        gensP = maybePar (genDecoupled a a ll) (genDecoupled b b lr)
+                    in chooseAndTry $ gensP : gensC
 
-instance GenProg (V Int) (V Int) where
-    genProg _1 __1 l
-        | l < 1 = return $ Just genId
-        | l == 1 = return $ Just arbitraryFn
-        | otherwise =
-            -- TODO We could have a LoopD
-            let (ll, lr) = halve l
-            in chooseAndTry [
-                maybeComp (genProg _1 _1 ll) (genProg _1 _1 lr),
-                maybeComp (genProg _1 _2 ll) (genProg _2 _1 lr)]
+gensDecoupledPair :: (ValidDesc a, ValidDesc b, ValidDesc c) =>
+    PDesc a -> PDesc b -> PDesc c -> Int -> Int -> [Gen (Maybe (ANF a c, SF (Simplify a) (Simplify c)))]
+gensDecoupledPair pa pb pc ll lr = [
+        maybeComp (genProg pa pb ll) (genDecoupled pb pc lr),
+        maybeComp (genDecoupled pa pb ll) (genProg pb pc lr),
+        maybeComp (genDecoupled pa pb ll) (genDecoupled pb pc lr)
+    ]
 
-    genDecoupled _1 __1 l
-        | l < 1 = return Nothing
-        | l == 1 = return $ Just genPre
-        | otherwise =
-            -- TODO We could have a LoopM
-            let (ll, lr) = halve l
-            in chooseAndTry [
-                maybeComp (genDecoupled _1 _1 ll) (genProg _1 _1 lr),
-                maybeComp (genProg _1 _1 ll) (genDecoupled _1 _1 lr),
-                maybeComp (genDecoupled _1 _2 ll) (genProg _2 _1 lr),
-                maybeComp (genProg _1 _2 ll) (genDecoupled _2 _1 lr)]
-
-instance GenProg (V Int) (P (V Int) (V Int)) where
-    genProg _1 _2 l
-        | l < 1 = return Nothing
-        | l == 1 = return $ Just arbitraryFn
-        | otherwise =
-            -- TODO We could have a LoopD
-            let (ll, lr) = halve l
-            in chooseAndTry [
-                maybeComp (genProg _1 _2 ll) (genProg _2 _2 lr),
-                maybeComp (genProg _1 _1 ll) (genProg _1 _2 lr)]
-
-    genDecoupled _1 _2 l
-        | l < 2 = return Nothing
-        | otherwise =
-            -- TODO We could have a LoopM
-            let (ll, lr) = halve l
-            in chooseAndTry [
-                maybeComp (genDecoupled _1 _1 ll) (genProg _1 _2 lr),
-                maybeComp (genProg _1 _2 ll) (genDecoupled _2 _2 lr)
-            ]
-
-instance GenProg (P (V Int) (V Int)) (V Int) where
-    genProg _2 _1 l
-        | l < 1 = return Nothing
-        | l == 1 = return $ Just arbitraryFn
-        | otherwise =
-            -- TODO We could have a LoopD
-            let (ll, lr) = halve l
-            in chooseAndTry [
-                maybeComp (genProg _2 _2 ll) (genProg _2 _1 lr),
-                maybeComp (genProg _2 _1 ll) (genProg _1 _1 lr)]
-    genDecoupled _2 _1 l
-        | l < 2 = return Nothing
-        | otherwise =
-            -- TODO We could have a LoopM
-            let (ll, lr) = halve l
-            in chooseAndTry [
-                maybeComp (genDecoupled _2 _2 ll) (genProg _2 _1 lr),
-                maybeComp (genProg _2 _1 ll) (genDecoupled _1 _1 lr)
-            ]
-
-instance GenProg (P (V Int) (V Int)) (P (V Int) (V Int)) where
-    genProg _2 __2 l
-        | l < 1 = return $ Just genId
-        | l == 1 = return $ Just arbitraryFn
-        | otherwise =
-            -- TODO We could have a LoopD
-            let (ll, lr) = halve l
-            in chooseAndTry [
-                maybeComp (genProg _2 _2 ll) (genProg _2 _2 lr),
-                maybeComp (genProg _2 _1 ll) (genProg _1 _2 lr),
-                maybePar (genProg _1 _1 ll) (genProg _1 _1 lr),
-                -- d *** x where x not decoupled is itself not decoupled
-                -- (this is to test more complex situations)
-                maybePar (genDecoupled _1 _1 ll) (genProg _1 _1 lr),
-                maybePar (genProg _1 _1 ll) (genDecoupled _1 _1 lr)]
-    genDecoupled _2 __2 l
-        | l < 1 = return Nothing
-        | l == 1 = return $ Just genPre
-        | otherwise =
-            -- TODO We could have a LoopM
-            -- OR we could have a LoopD with partial Pre on its left edge, e.g.
-            -- (genDecoupled _1 _1 ll) (genProg _1 _1 lr) (loopDWithPreOnSecondInput)
-            let (ll, lr) = halve l
-            in chooseAndTry [
-                maybeComp (genDecoupled _2 _2 ll) (genProg _2 _2 lr),
-                maybeComp (genProg _2 _2 ll) (genDecoupled _2 _2 lr),
-                maybeComp (genDecoupled _2 _1 ll) (genProg _1 _2 lr),
-                maybeComp (genProg _2 _1 ll) (genDecoupled _1 _2 lr),
-                maybePar (genDecoupled _1 _1 ll) (genDecoupled _1 _1 lr)]
-
--- TODO: we have no instances for 3a, 3b and 4 except for with themselves.
--- Might be worth adding some for more complex arrow programs.
-
-instance GenProg (P (P (V Int) (V Int)) (V Int)) (P (P (V Int) (V Int)) (V Int)) where
-    genProg _3a __3a l
-        | l < 1 = return $ Just genId
-        | l == 1 = return $ Just arbitraryFn
-        | otherwise =
-            let (ll, lr) = halve l
-            in chooseAndTry [
-                maybeComp (genProg _3a _3a ll) (genProg _3a _3a lr),
-                maybePar (genProg _2 _2 ll) (genProg _1 _1 lr),
-                maybePar (genDecoupled _2 _2 ll) (genProg _1 _1 lr),
-                maybePar (genProg _2 _2 ll) (genDecoupled _1 _1 lr)
-            ]
-    genDecoupled _3a __3a l
-        | l < 1 = return Nothing
-        | l == 1 = return $ Just genPre
-        | otherwise =
-            let (ll, lr) = halve l
-            in chooseAndTry [
-                maybeComp (genDecoupled _3a _3a ll) (genProg _3a _3a lr),
-                maybeComp (genProg _3a _3a ll) (genDecoupled _3a _3a lr),
-                maybePar (genDecoupled _2 _2 ll) (genDecoupled _1 _1 lr)
-            ]
-
-instance GenProg (P (V Int) (P (V Int) (V Int))) (P (V Int) (P (V Int) (V Int))) where
-    genProg _3b __3b l
-        | l < 1 = return $ Just genId
-        | l == 1 = return $ Just arbitraryFn
-        | otherwise =
-            let (ll, lr) = halve l
-            in chooseAndTry [
-                maybeComp (genProg _3b _3b ll) (genProg _3b _3b lr),
-                maybePar (genProg _1 _1 ll) (genProg _2 _2 lr),
-                maybePar (genDecoupled _1 _1 ll) (genProg _2 _2 lr),
-                maybePar (genProg _1 _1 ll) (genDecoupled _2 _2 lr)
-            ]
-    genDecoupled _3b __3b l
-        | l < 1 = return Nothing
-        | l == 1 = return $ Just genPre
-        | otherwise =
-            let (ll, lr) = halve l
-            in chooseAndTry [
-                maybeComp (genDecoupled _3b _3b ll) (genProg _3b _3b lr),
-                maybeComp (genProg _3b _3b ll) (genDecoupled _3b _3b lr),
-                maybePar (genDecoupled _1 _1 ll) (genDecoupled _2 _2 lr)
-            ]
-
-instance GenProg (P (P (V Int) (V Int)) (P (V Int) (V Int))) (P (P (V Int) (V Int)) (P (V Int) (V Int))) where
-    genProg _4 __4 l
-        | l < 1 = return $ Just genId
-        | l == 1 = return $ Just arbitraryFn
-        | otherwise =
-            let (ll, lr) = halve l
-            in chooseAndTry [
-                maybeComp (genProg _4 _4 ll) (genProg _4 _4 lr),
-                maybePar (genProg _2 _2 ll) (genProg _2 _2 lr),
-                maybePar (genDecoupled _2 _2 ll) (genProg _2 _2 lr),
-                maybePar (genProg _2 _2 ll) (genDecoupled _2 _2 lr)
-            ]
-    
-    genDecoupled _4 __4 l
-        | l < 1 = return Nothing
-        | l == 1 = return $ Just genPre
-        | otherwise =
-            let (ll, lr) = halve l
-            in chooseAndTry [
-                maybeComp (genDecoupled _4 _4 ll) (genProg _4 _4 lr),
-                maybeComp (genProg _4 _4 ll) (genDecoupled _4 _4 lr),
-                maybePar (genDecoupled _2 _2 ll) (genDecoupled _2 _2 lr)
-            ]
+-- NOTE TRYING TO IDENTIFY PATTERNS:
+-- GenProg x x has
+-- genProg picks some y and does maybeComp (genProg x y) (genProg y x)
+-- genDecoupled does the same but picks one to be decoupled
+-- If x is some kind of pair (q w), you also get the pairing versions:
+-- maybePar (genProg q q) (genProg w w)
+-- with decoupling as appropriate.
+-- GenProg x y (x !~ y) has
+-- genProg has maybeComp (genProg x y) (genProg y y) and maybeComp (genProg x x) (genProg x y)
+-- and similar for genDecoupled.
+-- Also in all cases we can have LoopD when not making something decoupled (note that f, i can be partially decoupled)
+-- and LoopM when decoupled.
+-- Need to add a way to count loops to avoid having too many.
+-- 0. Replace the Proxy with a smarter argument, to avoid _1 etc
+-- 1. Generalise to avoid all this excess code. Have a typeclass to specify ones we're allowed to generate for.
+-- (Check this works.)
+-- 2. Add Loops, likely changing genLoopD/M to take in the non-Proxy too.
 
 -- Split an int into two, the larger always being returned first.
 halve :: Int -> (Int, Int)
@@ -286,49 +214,42 @@ debugSample gen = do
 
 -- GENERATE FUNCTIONS OF ARBITRARY ARITY
 
-arbitraryFn :: forall d d'. (Reduce d, Duplicate d') =>
+arbitraryFn :: (ValidDesc d, ValidDesc d') => PDesc d -> PDesc d' ->
     (ANF d d', SF (Simplify d) (Simplify d'))
-arbitraryFn = let
-    (anfl, sfl) = reduce @d
-    (anfr, sfr) = duplicate @d'
+arbitraryFn d d' = let
+    (anfl, sfl) = reduce d
+    (anfr, sfr) = duplicate d'
     in (Single . Arr $ anfr . anfl, A.arr $ sfr . sfl)
 
-genPre :: forall d. (Reduce d) => (ANF d d, SF (Simplify d) (Simplify d))
-genPre = let (zl, zr) = genZero in (pre_ zl, iPre zr)
-
-class ValidDesc a => Reduce a where
-    reduce :: (Val a -> Val (V Int), Simplify a -> Int)
-    genId :: (ANF a a, SF (Simplify a) (Simplify a))
-    genZero :: (Val a, Simplify a)
-
-instance Reduce (V Int) where
-    reduce = (Prelude.id, Prelude.id)
-    genId = (id_, C.id)
-    genZero = (One 0, 0)
-
-instance forall l r. (Reduce l, Reduce r) => Reduce (P l r) where
-    reduce = let
-        (anfl, sfl) = reduce @l
-        (anfr, sfr) = reduce @r
-        in (\(Pair x y) ->
+reduce :: PDesc d -> (Val d -> Val (V Int), Simplify d -> Int)
+reduce ProxV = (Prelude.id, Prelude.id)
+reduce (ProxP a b) =
+    let
+        (anfl, sfl) = reduce a
+        (anfr, sfr) = reduce b
+    in (\(Pair x y) ->
             let One x' = anfl x
                 One y' = anfr y
             in One $ x' + y',
-            \(x,y) -> sfl x + sfr y)
-    genId = (id_, C.id)
-    genZero = let
-        (vl, il) = genZero @l
-        (vr, ir) = genZero @r
-        in (Pair vl vr, (il, ir))
-        
-class ValidDesc a => Duplicate a where
-    duplicate :: ValidDesc a => (Val (V Int) -> Val a, Int -> Simplify a)
+        \(x,y) -> sfl x + sfr y)
 
-instance Duplicate (V Int) where
-    duplicate = (Prelude.id, Prelude.id)
+duplicate :: PDesc d -> (Val (V Int) -> Val d, Int -> Simplify d)
+duplicate ProxV = (Prelude.id, Prelude.id)
+duplicate (ProxP a b) =
+    let
+        (anfl, sfl) = duplicate a
+        (anfr, sfr) = duplicate b
+    in (\x -> Pair (anfl x) (anfr x), \x -> (sfl x, sfr x))
 
-instance forall l r. (Duplicate l, Duplicate r) => Duplicate (P l r) where
-    duplicate = let
-        (anfl, sfl) = duplicate @l
-        (anfr, sfr) = duplicate @r
-        in (\x -> Pair (anfl x) (anfr x), \x -> (sfl x, sfr x))
+genPre :: ValidDesc d => PDesc d -> (ANF d d, SF (Simplify d) (Simplify d))
+genPre pd = let (zl, zr) = genZero pd in (pre_ zl, iPre zr)
+
+genId :: ValidDesc d => PDesc d -> (ANF d d, SF (Simplify d) (Simplify d))
+genId _ = (id_, C.id)
+
+genZero :: PDesc a -> (Val a, Simplify a)
+genZero ProxV = (One 0, 0)
+genZero (ProxP a b) =
+    let (anfl, sfl) = genZero a
+        (anfr, sfr) = genZero b
+    in (Pair anfl anfr, (sfl, sfr))

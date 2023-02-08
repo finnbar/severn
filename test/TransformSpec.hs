@@ -171,9 +171,11 @@ prop_transform_into_noloop = property $ do
 
 prop_arbitrary_program :: Property
 prop_arbitrary_program = property $ do
-    len <- forAll $ Gen.integral (Range.linear 10 15)
+    len <- forAll $ Gen.integral (Range.linear 1 15)
     (ins, ins') <- forAll genOneVals
-    (anf, sf) <- forAllWith (show . fst) $ fromJust <$> Gen.choice [genLoopM @(V Int) @(V Int) len, genLoopD len (Gen.constant (Just genId)) (Gen.constant (Just genId))]
+    (anf, sf) <- forAllWith (show . fst) $ Gen.just $ Gen.choice [
+        genLoopM ProxV ProxV len,
+        genLoopD ProxV ProxV len (Gen.constant (Just $ genId ProxV)) (Gen.constant (Just $ genId ProxV))]
     checkEqualTransform (anf, sf) (ins, ins')
 
 transformSpec :: TestTree 

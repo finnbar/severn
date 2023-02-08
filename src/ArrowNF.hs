@@ -1,4 +1,4 @@
-{-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE TypeOperators, DataKinds #-}
 
 module ArrowNF (module NF, module ArrowNF) where
 
