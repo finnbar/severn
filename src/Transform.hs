@@ -1,4 +1,4 @@
-{-# LANGUAGE ScopedTypeVariables, TypeOperators, StandaloneDeriving #-}
+{-# LANGUAGE ScopedTypeVariables, TypeOperators, StandaloneDeriving, DataKinds #-}
 
 module Transform where
 
@@ -190,7 +190,7 @@ split anf = case tailsForm anf of
 
 leftSlide :: ValidDesc b => LoopBox a b -> Maybe (LoopBox a b)
 leftSlide (LB anf) =
-    case headTail anf of
+    case headTail (pushBack anf) of
         Left _ -> Nothing
         Right (HT s ss) -> case s of
             s1 :***: s2 -> case isId s2 of
@@ -203,7 +203,7 @@ leftSlide (LB anf) =
 
 rightSlide :: ValidDesc a => LoopBox a b -> Maybe (LoopBox a b)
 rightSlide (LB anf) =
-    case initLast anf of
+    case initLast (push anf) of
         Left _ -> Nothing
         Right (IL ss s) -> case s of
             s1 :***: s2 -> case isId s2 of

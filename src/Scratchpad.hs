@@ -45,10 +45,3 @@ dependsLoopMLB = f' >>> second (loop (f' >>> pre (Pair (One 0) (One 0)) >>> f'))
 trivialFail = loop $ (f *** f) >>> f' >>> second (pre (One 0))
 
 tighteningNeeded = loop $ second mergeANF >>> f' >>> second (loop (f' >>> first splitANF >>> second (pre (One 0)) >>> first (first (pre (One 0)))) >>> second (pre (One 0)))
-
--- *** Exception:
--- LB (((Id *** Arr[P(V)(V)->V])
---     >>> Arr[P(V)(V)->P(V)(V)])
---     >>> ((Id ***
---         LoopD ((Arr[P(V)(V)->P(V)(V)] >>> ((Arr[V->P(V)(V)] *** Id) >>> ((Pre *** Id) *** Id)))) (Pre))
---     >>> (Id *** (Id *** Pre))))

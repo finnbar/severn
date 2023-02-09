@@ -33,14 +33,13 @@ pDescEq _ _ = Nothing
 
 -- GENERATION PARAMETERS
 
--- TODO: Actually use this.
 data GenParam = GP {
         size :: Int, -- How many blocks we're allowed in the generated program.
         loopStructure :: Maybe [Int] -- How to structure nested loops.
         -- If loopStructure is Nothing, there is no limitation on how your loops are structured.
         -- If loopStructure is Just [n1, n2, n3 ...], then it consists of n1 loops at top level,
         -- each containing n2 loops, each containing n3 loops and so on.
-    }
+    } deriving Show
 
 allowIfNoLoopNeeded :: GenParam -> Maybe a -> Maybe a
 allowIfNoLoopNeeded gp ma = case loopStructure gp of
@@ -148,8 +147,8 @@ genLoopD px py gp fgen igen = case useUpLoopRequirement gp of
     where
         genLoopD' :: forall s (v :: Desc s). (ValidDesc v) =>
             PDesc v -> GenParam -> Gen (Maybe (ANF a b, SF (Simplify a) (Simplify b)))
-        genLoopD' pv gp = do
-            let (gpl, gpr) = splitBetween gp
+        genLoopD' pv gp' = do
+            let (gpl, gpr) = splitBetween gp'
                 f = fgen
                 i = igen
                 h = genProg (ProxP px pv) (ProxP py pv) gpl
@@ -237,27 +236,30 @@ genDecoupled pa pb gp =
                                 genDecouplingWithinLoopD a b gp
                         gensP = maybePar (genDecoupled a a gpl) (genDecoupled b b gpr)
                     in chooseAndTry $ gensP : gensC
-        genDecouplingWithinLoopD :: (ValidDesc a, ValidDesc b) => PDesc a -> PDesc b -> GenParam -> [Gen (Maybe (ANF (P a b) (P a b), SF (Simplify a, Simplify b) (Simplify a, Simplify b)))]
-        genDecouplingWithinLoopD pa pb gp =
-            let (gp1, gp2) = splitBetween gp
-                (gp3, gp4) = splitBetween gp1
-                (gp5, gp6) = splitBetween gp2
-            in [
-                -- (nodec *** dec) >>> LoopD with (Pre *** f) left tightenable
-                -- nodec *** dec
-                maybeComp (maybePar (genProg pa pa gp3) (genDecoupled pb pb gp4))
-                    -- LoopD...
-                    (genLoopD (ProxP pa pb) (ProxP pa pb) gp5
-                        -- with dec *** nodec
-                        (maybePar (genDecoupled pa pa gp6) (Gen.constant $ Just $ genId pb)) (Gen.constant (Just $ genId (ProxP pa pb)))),
-                -- LoopD with (f *** Pre) right tightenable >>> (dec *** nodec)
-                -- LoopD...
-                maybeComp (genLoopD (ProxP pa pb) (ProxP pa pb) gp3
-                    -- with right tightenable nodec *** dec
-                    (Gen.constant (Just $ genId (ProxP pa pb))) (maybePar (Gen.constant $ Just $ genId pa) (genDecoupled pb pb gp4)))
-                    -- dec *** nodec
-                    (maybePar (genDecoupled pa pa gp5) (genProg pb pb gp6))
-                ]
+-- TODO: THE FIRST CASE OF THIS SOMETIMES GENERATES UNSOLVABLE LOOP / NOT DECOUPLED ANFS
+-- Although I'm really unsure whether it's this or something else...
+-- NOTE: I ran 10k tests multiple times and it succeeded with this bit commented out.
+genDecouplingWithinLoopD :: (ValidDesc a, ValidDesc b) => PDesc a -> PDesc b -> GenParam -> [Gen (Maybe (ANF (P a b) (P a b), SF (Simplify a, Simplify b) (Simplify a, Simplify b)))]
+genDecouplingWithinLoopD pa pb gp =
+    let (gp1, gp2) = splitBetween gp
+        (gp3, gp4) = splitBetween gp1
+        (gp5, gp6) = splitBetween gp2
+    in [
+        -- (nodec *** dec) >>> LoopD with (Pre *** f) left tightenable
+        -- nodec *** dec
+        maybeComp (maybePar (genProg pa pa gp3) (genDecoupled pb pb gp4))
+            -- LoopD...
+            (genLoopD (ProxP pa pb) (ProxP pa pb) gp5
+                -- with dec *** nodec
+                (maybePar (genDecoupled pa pa gp6) (Gen.constant $ Just $ genId pb)) (Gen.constant (Just $ genId (ProxP pa pb)))),
+        -- LoopD with (f *** Pre) right tightenable >>> (dec *** nodec)
+        -- LoopD...
+        maybeComp (genLoopD (ProxP pa pb) (ProxP pa pb) gp3
+            -- with right tightenable nodec *** dec
+            (Gen.constant (Just $ genId (ProxP pa pb))) (maybePar (Gen.constant $ Just $ genId pa) (genDecoupled pb pb gp4)))
+            -- dec *** nodec
+            (maybePar (genDecoupled pa pa gp5) (genProg pb pb gp6))
+        ]
 
 gensDecoupledPair :: (ValidDesc a, ValidDesc b, ValidDesc c) =>
     PDesc a -> PDesc b -> PDesc c -> GenParam -> GenParam -> [Gen (Maybe (ANF a c, SF (Simplify a) (Simplify c)))]

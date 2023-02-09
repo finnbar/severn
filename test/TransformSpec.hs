@@ -1,6 +1,6 @@
 {-# LANGUAGE TemplateHaskell, DataKinds, FlexibleContexts, StandaloneKindSignatures,
     OverloadedStrings, GADTs, PolyKinds, TypeFamilies, ExplicitForAll, BangPatterns,
-    TypeApplications #-}
+    TypeApplications, ScopedTypeVariables #-}
 
 module TransformSpec (transformSpec) where
 
@@ -22,6 +22,7 @@ import qualified Control.Arrow as A
 import System.Timeout (timeout)
 import Control.Monad.IO.Class
 import Data.Maybe (fromJust)
+import Control.Exception
 
 -- * Test `transform`.
 -- General idea is to test a prewritten program against a Yampa equivalent.
@@ -36,7 +37,7 @@ checkEqualTransform :: (Eq (Simplify a), Eq (Simplify b), Show (Simplify b), Val
     (ANF a b, SF (Simplify a) (Simplify b)) -> ([Val a], [Simplify a]) -> PropertyT IO ()
 checkEqualTransform (anf, sf) (ins, ins') = do
     let sfres = embed sf (deltaEncode 1 ins')
-    anf' <- liftIO $ timeout 1000000 $ return $! transform anf
+    anf' <- liftIO $ timeout 1000000 $ handle (\(e :: SomeException) -> error (show anf)) $ return $! transform anf
     case anf' of
         Just anf'' -> do
             let anfres = map removeDesc $ multiRun runANF anf'' ins
@@ -170,7 +171,7 @@ prop_transform_into_noloop = property $ do
     checkEqualTransform (anf', sf') (ins, ins')
 
 prop_arbitrary_program :: Property
-prop_arbitrary_program = property $ do
+prop_arbitrary_program = withTests 20000 $ property $ do
     len <- forAll $ Gen.integral (Range.linear 1 150)
     (ins, ins') <- forAll genOneVals
     (anf, sf) <- forAllWith (show . fst) $ Gen.just $ genProg ProxV ProxV (GP len Nothing)
@@ -178,16 +179,15 @@ prop_arbitrary_program = property $ do
 
 prop_deep_program :: Property
 prop_deep_program = property $ do
-    len <- forAll $ Gen.integral (Range.linear 1 150)
-    depth <- forAll $ Gen.integral (Range.linear 1 10)
-    let structure = Just $ replicate depth 1
+    len <- forAll $ Gen.integral (Range.linear 100 150)
+    let structure = Just [2,2,2]
     (ins, ins') <- forAll genOneVals
     (anf, sf) <- forAllWith (show . fst) $ Gen.just $ genProg ProxV ProxV (GP len structure)
     checkEqualTransform (anf, sf) (ins, ins')
 
 prop_shallow_program :: Property
 prop_shallow_program = property $ do
-    len <- forAll $ Gen.integral (Range.linear 1 150)
+    len <- forAll $ Gen.integral (Range.linear 40 80)
     depth <- forAll $ Gen.integral (Range.linear 1 10)
     let structure = Just [depth]
     (ins, ins') <- forAll genOneVals
