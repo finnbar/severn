@@ -173,7 +173,7 @@ prop_transform_into_noloop = property $ do
 prop_arbitrary_program :: Property
 prop_arbitrary_program = withTests 20000 $ property $ do
     len <- forAll $ Gen.integral (Range.linear 1 150)
-    (ins, ins') <- forAll genOneVals
+    (ins, ins') <- forAll $ genDoubles 20
     (anf, sf) <- forAllWith (show . fst) $ Gen.just $ genProg ProxV ProxV (GP len Nothing)
     checkEqualTransform (anf, sf) (ins, ins')
 
@@ -181,7 +181,7 @@ prop_deep_program :: Property
 prop_deep_program = property $ do
     len <- forAll $ Gen.integral (Range.linear 100 150)
     let structure = Just [2,2,2]
-    (ins, ins') <- forAll genOneVals
+    (ins, ins') <- forAll $ genDoubles 20
     (anf, sf) <- forAllWith (show . fst) $ Gen.just $ genProg ProxV ProxV (GP len structure)
     checkEqualTransform (anf, sf) (ins, ins')
 
@@ -190,7 +190,7 @@ prop_shallow_program = property $ do
     len <- forAll $ Gen.integral (Range.linear 40 80)
     depth <- forAll $ Gen.integral (Range.linear 1 10)
     let structure = Just [depth]
-    (ins, ins') <- forAll genOneVals
+    (ins, ins') <- forAll $ genDoubles 20
     (anf, sf) <- forAllWith (show . fst) $ Gen.just $ genProg ProxV ProxV (GP len structure)
     checkEqualTransform (anf, sf) (ins, ins')
 

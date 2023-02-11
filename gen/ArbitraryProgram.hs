@@ -20,7 +20,7 @@ import Data.Type.Equality (type (:~~:)(..))
 
 type PDesc :: forall s. Desc s -> *
 data PDesc x where
-    ProxV :: PDesc (V Int)
+    ProxV :: PDesc (V Double)
     ProxP :: (ValidDesc a, ValidDesc b) => PDesc a -> PDesc b -> PDesc (P a b)
 
 pDescEq :: PDesc a -> PDesc b -> Maybe (a :~~: b)
@@ -167,7 +167,7 @@ genProg pa pb gp =
         genProgEqTypes :: ValidDesc a => PDesc a -> GenParam -> Gen (Maybe (ANF a a, SF (Simplify a) (Simplify a)))
         genProgEqTypes pa gp
             | size gp < 1 = return . allowIfNoLoopNeeded gp . Just $ genId pa
-            | size gp == 1 = return . allowIfNoLoopNeeded gp . Just $ arbitraryFn pa pa
+            | size gp == 1 = allowIfNoLoopNeeded gp <$> Gen.frequency [(9, Gen.constant . Just $ arbitraryFn pa pa), (1, Gen.constant . Just $ genPre pa)]
             | otherwise = case pa of
                 ProxV ->
                     let (gpl, gpr) = splitBetween gp
@@ -236,30 +236,27 @@ genDecoupled pa pb gp =
                                 genDecouplingWithinLoopD a b gp
                         gensP = maybePar (genDecoupled a a gpl) (genDecoupled b b gpr)
                     in chooseAndTry $ gensP : gensC
--- TODO: THE FIRST CASE OF THIS SOMETIMES GENERATES UNSOLVABLE LOOP / NOT DECOUPLED ANFS
--- Although I'm really unsure whether it's this or something else...
--- NOTE: I ran 10k tests multiple times and it succeeded with this bit commented out.
-genDecouplingWithinLoopD :: (ValidDesc a, ValidDesc b) => PDesc a -> PDesc b -> GenParam -> [Gen (Maybe (ANF (P a b) (P a b), SF (Simplify a, Simplify b) (Simplify a, Simplify b)))]
-genDecouplingWithinLoopD pa pb gp =
-    let (gp1, gp2) = splitBetween gp
-        (gp3, gp4) = splitBetween gp1
-        (gp5, gp6) = splitBetween gp2
-    in [
-        -- (nodec *** dec) >>> LoopD with (Pre *** f) left tightenable
-        -- nodec *** dec
-        maybeComp (maybePar (genProg pa pa gp3) (genDecoupled pb pb gp4))
-            -- LoopD...
-            (genLoopD (ProxP pa pb) (ProxP pa pb) gp5
-                -- with dec *** nodec
-                (maybePar (genDecoupled pa pa gp6) (Gen.constant $ Just $ genId pb)) (Gen.constant (Just $ genId (ProxP pa pb)))),
-        -- LoopD with (f *** Pre) right tightenable >>> (dec *** nodec)
-        -- LoopD...
-        maybeComp (genLoopD (ProxP pa pb) (ProxP pa pb) gp3
-            -- with right tightenable nodec *** dec
-            (Gen.constant (Just $ genId (ProxP pa pb))) (maybePar (Gen.constant $ Just $ genId pa) (genDecoupled pb pb gp4)))
-            -- dec *** nodec
-            (maybePar (genDecoupled pa pa gp5) (genProg pb pb gp6))
-        ]
+        genDecouplingWithinLoopD :: (ValidDesc a, ValidDesc b) => PDesc a -> PDesc b -> GenParam -> [Gen (Maybe (ANF (P a b) (P a b), SF (Simplify a, Simplify b) (Simplify a, Simplify b)))]
+        genDecouplingWithinLoopD pa pb gp =
+            let (gp1, gp2) = splitBetween gp
+                (gp3, gp4) = splitBetween gp1
+                (gp5, gp6) = splitBetween gp2
+            in [
+                -- (nodec *** dec) >>> LoopD with (Pre *** f) left tightenable
+                -- nodec *** dec
+                maybeComp (maybePar (genProg pa pa gp3) (genDecoupled pb pb gp4))
+                    -- LoopD...
+                    (genLoopD (ProxP pa pb) (ProxP pa pb) gp5
+                        -- with dec *** nodec
+                        (maybePar (genDecoupled pa pa gp6) (Gen.constant $ Just $ genId pb)) (Gen.constant (Just $ genId (ProxP pa pb)))),
+                -- LoopD with (f *** Pre) right tightenable >>> (dec *** nodec)
+                -- LoopD...
+                maybeComp (genLoopD (ProxP pa pb) (ProxP pa pb) gp3
+                    -- with right tightenable nodec *** dec
+                    (Gen.constant (Just $ genId (ProxP pa pb))) (maybePar (Gen.constant $ Just $ genId pa) (genDecoupled pb pb gp4)))
+                    -- dec *** nodec
+                    (maybePar (genDecoupled pa pa gp5) (genProg pb pb gp6))
+                ]
 
 gensDecoupledPair :: (ValidDesc a, ValidDesc b, ValidDesc c) =>
     PDesc a -> PDesc b -> PDesc c -> GenParam -> GenParam -> [Gen (Maybe (ANF a c, SF (Simplify a) (Simplify c)))]
@@ -278,8 +275,8 @@ arbitraryFn d d' = let
     (anfr, sfr) = duplicate d'
     in (Single . Arr $ anfr . anfl, A.arr $ sfr . sfl)
 
-reduce :: PDesc d -> (Val d -> Val (V Int), Simplify d -> Int)
-reduce ProxV = (Prelude.id, Prelude.id)
+reduce :: PDesc d -> (Val d -> Val (V Double), Simplify d -> Double)
+reduce ProxV = (\(One x) -> One (x+1), (+1))
 reduce (ProxP a b) =
     let
         (anfl, sfl) = reduce a
@@ -290,8 +287,8 @@ reduce (ProxP a b) =
             in One $ x' + y',
         \(x,y) -> sfl x + sfr y)
 
-duplicate :: PDesc d -> (Val (V Int) -> Val d, Int -> Simplify d)
-duplicate ProxV = (Prelude.id, Prelude.id)
+duplicate :: PDesc d -> (Val (V Double) -> Val d, Double -> Simplify d)
+duplicate ProxV = (\(One x) -> One (x+1), (+1))
 duplicate (ProxP a b) =
     let
         (anfl, sfl) = duplicate a

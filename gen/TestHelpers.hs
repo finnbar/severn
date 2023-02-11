@@ -152,3 +152,10 @@ maybeMap f lg rg = do
     left <- lg
     right <- rg
     return $ f <$> left <*> right
+
+genDoubles :: Int -> Gen ([Val (V Double)], [Double])
+genDoubles i = unzip <$> Gen.list (Range.singleton i) genDouble
+    where
+        genDouble = do
+            d <- Gen.double (Range.linearFrac 0 100)
+            return (One d, d)
