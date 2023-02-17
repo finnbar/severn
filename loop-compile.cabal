@@ -27,6 +27,7 @@ library
   exposed-modules:
       ArrowNF
       NF
+      Optimise
       Run
       Scratchpad
       Transform

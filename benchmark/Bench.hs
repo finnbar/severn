@@ -10,6 +10,8 @@ import Criterion.Main
 import Hedgehog (Gen)
 import Hedgehog.Gen (sample, just)
 import Control.DeepSeq
+import Data.IORef
+import Control.Monad (replicateM_, void)
 
 import FRP.Yampa
 import Transform
@@ -18,6 +20,7 @@ import TestHelpers
 import Run
 import NF
 import ProgramGen
+import Optimise
 
 type TestPair = (ANF (V Double) (V Double), SF Double Double)
 
@@ -86,15 +89,31 @@ allGens inputs = concat $ flip map [25,50,100,150,200,250,300] $
         sizeToBranching :: Int -> [Int]
         sizeToBranching n = replicate (floor $ logBase 2.0 (fromIntegral n / 10)) 2
 
--- TODO: We're getting some very weird performance results.
--- I think the writing of IORefs at the start is slowing SFRP down vs ANF and SF.
--- See what Chupin's impl does (his ExecutionMachine is like CompiledANF).
--- Also important to note that our noLoop tests consist of solely Arr, which means that I think Yampa can optimise heavily.
--- (The SFRP tests done by Chupin include integrals, which are naturally stateful.)
--- So plan:
--- 1. Allow _some_ pre in our network, to avoid ridiculous optimisation by Yampa. DONE
--- 2. Add some IORef stuff to ANF and SF's benchmarks.
--- 3. See what happens.
+benchANF :: ANF (V Double) (V Double) -> [Val (V Double)] -> IO ()
+benchANF anf ins = do
+    inputRef <- newIORef ins
+    anfRef <- newIORef anf
+    replicateM_ 100000 $ do
+        (i : inps) <- readIORef inputRef
+        writeIORef inputRef inps
+        anf' <- readIORef anfRef
+        let (!vb, !anf'') = runANF anf' i
+        forceM vb
+        writeIORef anfRef anf''
+
+benchSF :: SF Double Double -> [Double] -> IO ()
+benchSF sf ins = do
+    inputRef <- newIORef ins
+    handle <- reactInit (return 0) (\handle' _ v -> forceM v >> return True) sf
+    replicateM_ 100000 $ do
+        (i : inps) <- readIORef inputRef
+        writeIORef inputRef inps
+        void $ react handle (1, Just i)
+
+forceM :: (Monad m, NFData a) => a -> m ()
+forceM val =
+  case rnf val of
+    () -> pure ()
 
 main :: IO ()
 main = do
@@ -102,14 +121,13 @@ main = do
     -- defaultMainWith defaultConfig (allGens (ins, ins')) -- NOTE: will likely need to change default config
 
     -- Let's construct some examples just to make sure.
-    (!anf, !sf) <- sample $ generateProgram (GP 25 (Just [1])) -- makeMassiveNestedLoop 100
-    let !anf' = transform anf
+    (!anf, !sf) <- sample $ generateProgram (GP 50 Nothing) -- makeMassiveNestedLoop 100
+    let !anf' = optimiseANF $ transform anf
     !canf <- compile anf'
-    print anf
     print anf'
-    defaultMainWith defaultConfig $ [
-            bench "anf" $ nf (multiRun runANF anf') ins,
-            bench "sf" $ nf (embed sf) (deltaEncode 1 ins')
+    defaultMainWith defaultConfig [
+            bench "anf" $ nfIO (benchANF anf' ins),
+            bench "sf" $ nfIO (benchSF sf ins')
         ]
 
 instance NFData a => NFData (Val ('V a)) where
