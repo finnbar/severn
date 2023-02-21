@@ -1,6 +1,6 @@
 {-# LANGUAGE DataKinds, GADTs #-}
 
-module LoopGen where
+module TransformGen where
 
 import Hedgehog
 import qualified Hedgehog.Gen as Gen

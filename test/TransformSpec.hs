@@ -12,7 +12,7 @@ import Test.Tasty.Hedgehog (fromGroup)
 import ArrowCF
 import Transform
 import TestHelpers
-import LoopGen
+import TransformGen
 import Run
 import ArbitraryProgram
 import Optimise (optimiseCF)
