@@ -6,8 +6,6 @@ module NF where
 import Data.Proxy
 import Data.Type.Equality (type (:~~:)(..))
 
--- TODO: Move non-type parts of this file.
-
 -- * Data types and constructors
 
 -- Trick taken from Guerric Chupin's SFRP implementation.
@@ -40,7 +38,7 @@ instance forall a b. (ValidDesc a, ValidDesc b) => ValidDesc (P a b) where
     generateId Proxy = generateId (Proxy :: Proxy a) :***: generateId (Proxy :: Proxy b)
     showArity (Proxy :: Proxy (P a b)) = "P(" ++ showArity (Proxy :: Proxy a) ++ ")(" ++ showArity (Proxy :: Proxy b) ++ ")"
 
--- ArrowNormalForm, so we force >>> to be at the top level of each loop.
+-- Composed Form, so we force >>> to be at the top level of each loop.
 -- Note that this may be at any stage of compilation, so could be a mix of
 -- Loop/LoopD/LoopM.
 infixl 1 :>>>:
