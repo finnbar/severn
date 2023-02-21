@@ -42,6 +42,6 @@ prop_no_pre_pairs = property $ do
 arrowCFSpec :: TestTree
 arrowCFSpec = fromGroup $ Group "ArrowCF invariants hold" [
         ("ArrowCF preserves distributive law", prop_distribute),
-        ("ArrowCF removed surplus id terms", prop_no_id),
+        ("ArrowCF removes surplus id terms", prop_no_id),
         ("ArrowCF disallows pre (i,j)", prop_no_pre_pairs)
     ]

@@ -70,7 +70,6 @@ test-suite loop-compile-test
       ArbitraryProgram
       ArrowCFGen
       LoopGen
-      ProgramGen
       TestHelpers
       Paths_loop_compile
   hs-source-dirs:
@@ -95,7 +94,6 @@ benchmark bench-vs-yampa
       ArbitraryProgram
       ArrowCFGen
       LoopGen
-      ProgramGen
       TestHelpers
       Paths_loop_compile
   hs-source-dirs:

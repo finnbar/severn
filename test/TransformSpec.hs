@@ -1,6 +1,5 @@
-{-# LANGUAGE DataKinds, FlexibleContexts, StandaloneKindSignatures,
-    OverloadedStrings, GADTs, PolyKinds, TypeFamilies, ExplicitForAll, BangPatterns,
-    TypeApplications, ScopedTypeVariables #-}
+{-# LANGUAGE DataKinds, FlexibleContexts,
+    OverloadedStrings, GADTs, PolyKinds, TypeFamilies, ScopedTypeVariables #-}
 
 module TransformSpec (transformSpec) where
 
@@ -16,6 +15,7 @@ import TestHelpers
 import LoopGen
 import Run
 import ArbitraryProgram
+import Optimise (optimiseCF)
 
 import FRP.Yampa (deltaEncode, embed, SF, iPre)
 import qualified Control.Arrow as A
@@ -23,7 +23,6 @@ import System.Timeout (timeout)
 import Control.Monad.IO.Class
 import Data.Maybe (fromJust)
 import Control.Exception
-import Optimise (optimiseCF)
 
 -- * Test `transform`.
 -- General idea is to test a prewritten program against a Yampa equivalent.

@@ -23,8 +23,8 @@ multiRun run prog (a : as) =
     in b : multiRun run prog' as
 
 -- IMPORTANT NOTE
--- All of the generators generate an ArrowNF program and its equivalent Yampa program.
--- In ArrowNFSpec, we just use the first output via `fst <$>`.
+-- All of the generators generate a CF program and its equivalent Yampa program.
+-- In ArrowCFSpec, we just use the first output via `fst <$>`.
 -- In TransformSpec, we check for equivalence so use both.
 
 splitGen :: (a -> b, a -> c) -> Gen a -> Gen (b, c)
@@ -108,33 +108,6 @@ genCrushable =
             (first (pre i) >>> second (pre j), A.first (iPre i') A.>>> A.second (iPre j')),
             -- second (pre j) >>> first (pre i)
             (second (pre j) >>> first (pre i), A.second (iPre j') A.>>> A.first (iPre i')) ]
-
--- @partition2@ partitions an int into two factors which sum to that int.
--- As long as i > 0, the first partition is guaranteed to be non-zero.
-partition2 :: Int -> Gen (Int, Int)
-partition2 i
-    | i >= 1 = do
-        p <- Gen.integral_ $ Range.constant 1 i
-        return (p, i-p)
-    | otherwise = return (0,0)
-
-partition3 :: Int -> Gen (Int, Int, Int)
-partition3 i = do
-    (x, p) <- partition2 i
-    (q, r) <- partition2 x
-    return (p, q, r)
-
-partition4 :: Int -> Gen (Int, Int, Int, Int)
-partition4 i = do
-    (x, p) <- partition2 i
-    (q, r, s) <- partition3 x
-    return (p, q, r, s)
-
-partition5 :: Int -> Gen (Int, Int, Int, Int, Int)
-partition5 i = do
-    (x, p) <- partition2 i
-    (q, r, s, t) <- partition4 x
-    return (p, q, r, s, t)
 
 chooseAndTry :: [Gen (Maybe a)] -> Gen (Maybe a)
 chooseAndTry gens = Gen.shuffle gens >>= tryAll
