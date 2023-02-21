@@ -15,14 +15,14 @@ import Data.Proxy (Proxy(..))
 import ArrowNF
 import TestHelpers
 
--- Generates a pair of ANFs: one of the form
+-- Generates a pair of CFs: one of the form
 -- ((a1 >>> ... >>> z1) *** (a2 >>> ... >>> z2))
 -- and another of the form
 -- ((a1 *** a2) >>> ... >>> (z1 *** z2)).
 -- We use this in @prop_distribute@.
 genDistributiveTest :: Int ->
-    Gen (ANF ('P ('V Int) ('V Int)) ('P ('V Int) ('V Int)),
-        ANF ('P ('V Int) ('V Int)) ('P ('V Int) ('V Int)))
+    Gen (CF ('P ('V Int) ('V Int)) ('P ('V Int) ('V Int)),
+        CF ('P ('V Int) ('V Int)) ('P ('V Int) ('V Int)))
 genDistributiveTest n
     | n <= 0 = undefined
     | otherwise = do
@@ -32,8 +32,8 @@ genDistributiveTest n
         -- LHS of tuple = (l, r) to eventually be l *** r
         -- RHS of tuple = lr which is each (l *** r) composed
         genNComposition :: Int ->
-            Gen ((ANF ('V Int) ('V Int), ANF ('V Int) ('V Int)),
-                ANF ('P ('V Int) ('V Int)) ('P ('V Int) ('V Int)))
+            Gen ((CF ('V Int) ('V Int), CF ('V Int) ('V Int)),
+                CF ('P ('V Int) ('V Int)) ('P ('V Int) ('V Int)))
         genNComposition 1 = do
             f <- fst <$> genSingle
             f' <- fst <$> genSingle
@@ -44,9 +44,9 @@ genDistributiveTest n
             f' <- fst <$> genSingle
             return ((l >>> f, r >>> f'), lr >>> (f *** f'))
 
--- This generates two ANFs: a composition containing id, and one with
+-- This generates two CFs: a composition containing id, and one with
 -- those id removed.
-genNCompsWithId :: Int -> Gen (ANF ('V Int) ('V Int), ANF ('V Int) ('V Int))
+genNCompsWithId :: Int -> Gen (CF ('V Int) ('V Int), CF ('V Int) ('V Int))
 genNCompsWithId 1 = do
     sing <- fst <$> genSingle
     sing' <- Gen.element [
@@ -61,8 +61,8 @@ genNCompsWithId n = do
     return (sing >>> rest, sing' >>> rest)
 
 genNCompsWithPrePairs :: Int ->
-    Gen (ANF ('P ('V Int) ('V Int)) ('P ('V Int) ('V Int)),
-    ANF ('P ('V Int) ('V Int)) ('P ('V Int) ('V Int)))
+    Gen (CF ('P ('V Int) ('V Int)) ('P ('V Int) ('V Int)),
+    CF ('P ('V Int) ('V Int)) ('P ('V Int) ('V Int)))
 genNCompsWithPrePairs 1 =
     Gen.choice [
         genPrePair,

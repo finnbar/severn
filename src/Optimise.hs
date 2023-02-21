@@ -27,7 +27,7 @@ bothV f g (Pair x y) = Pair (f x) (g y)
 
 optimiseDec :: Decoupled a b -> Decoupled a b
 optimiseDec (Pre v) = Pre v
-optimiseDec (LoopM f i g) = LoopM (optimiseANF f) i (optimiseANF g)
+optimiseDec (LoopM f i g) = LoopM (optimiseCF f) i (optimiseCF g)
 optimiseDec (BothDec f g) = BothDec (optimiseDec f) (optimiseDec g)
 
 optimiseNoComp :: NoComp a b -> NoComp a b
@@ -37,46 +37,46 @@ optimiseNoComp (f :***: g) =
         (Id, Arr g') -> Arr $ secondV g'
         (Arr f', Arr g') -> Arr $ bothV f' g'
         (f', g') -> f' :***: g' 
-optimiseNoComp (Loop f) = Loop $ optimiseANF f
-optimiseNoComp (LoopD f i) = LoopD (optimiseANF f) i
+optimiseNoComp (Loop f) = Loop $ optimiseCF f
+optimiseNoComp (LoopD f i) = LoopD (optimiseCF f) i
 optimiseNoComp (Dec d) = Dec $ optimiseDec d
 -- Arr, Id can't be optimised.
 optimiseNoComp nc = nc
 
-optimiseANF :: ANF a b -> ANF a b
-optimiseANF (Single nc) = Single (optimiseNoComp nc)
-optimiseANF (f :>>>: g) = optimiseANFPair (optimiseANF f) (optimiseANF g)
+optimiseCF :: CF a b -> CF a b
+optimiseCF (Single nc) = Single (optimiseNoComp nc)
+optimiseCF (f :>>>: g) = optimiseCFPair (optimiseCF f) (optimiseCF g)
 
-optimiseANFPair :: (ValidDesc a, ValidDesc b, ValidDesc c)
-    => ANF a b -> ANF b c -> ANF a c
-optimiseANFPair (Single (Arr f')) (Single (Arr g')) =
+optimiseCFPair :: (ValidDesc a, ValidDesc b, ValidDesc c)
+    => CF a b -> CF b c -> CF a c
+optimiseCFPair (Single (Arr f')) (Single (Arr g')) =
     Single (Arr (g' . f'))
-optimiseANFPair (Single (Arr f')) (Single (Arr gl :***: gr)) =
-    optimiseANF $ (Single . Arr $ firstV gl . f') :>>>:
+optimiseCFPair (Single (Arr f')) (Single (Arr gl :***: gr)) =
+    optimiseCF $ (Single . Arr $ firstV gl . f') :>>>:
         Single (idNoComp :***: gr)
-optimiseANFPair (Single (Arr f')) (Single (gl :***: Arr gr)) =
-    optimiseANF $ (Single . Arr $ secondV gr . f') :>>>:
+optimiseCFPair (Single (Arr f')) (Single (gl :***: Arr gr)) =
+    optimiseCF $ (Single . Arr $ secondV gr . f') :>>>:
         Single (gl :***: idNoComp)
-optimiseANFPair (Single (Arr fl :***: fr)) (Single (Arr g')) =
-    optimiseANF $ Single (idNoComp :***: fr) :>>>:
+optimiseCFPair (Single (Arr fl :***: fr)) (Single (Arr g')) =
+    optimiseCF $ Single (idNoComp :***: fr) :>>>:
         (Single . Arr $ g' . firstV fl)
-optimiseANFPair (Single (fl :***: Arr fr)) (Single (Arr g')) =
-    optimiseANF $ Single (fl :***: idNoComp) :>>>:
+optimiseCFPair (Single (fl :***: Arr fr)) (Single (Arr g')) =
+    optimiseCF $ Single (fl :***: idNoComp) :>>>:
         (Single . Arr $ g' . secondV fr)
-optimiseANFPair (Single (fl :***: Arr fr)) (Single (Arr gl :***: gr)) =
-    optimiseANF $ Single (fl :***: idNoComp) :>>>:
+optimiseCFPair (Single (fl :***: Arr fr)) (Single (Arr gl :***: gr)) =
+    optimiseCF $ Single (fl :***: idNoComp) :>>>:
         Single (Arr gl :***: Arr fr) :>>>:
         Single (idNoComp :***: gr)
-optimiseANFPair (Single (Arr fl :***: fr)) (Single (gl :***: Arr gr)) =
-    optimiseANF $ Single (idNoComp :***: fr) :>>>:
+optimiseCFPair (Single (Arr fl :***: fr)) (Single (gl :***: Arr gr)) =
+    optimiseCF $ Single (idNoComp :***: fr) :>>>:
         Single (Arr fl :***: Arr gr) :>>>:
         Single (gl :***: idNoComp)
-optimiseANFPair (Single (Arr fl :***: fr)) (Single (Arr gl :***: gr)) =
-    optimiseANF $ Single (Arr (gl . fl) :***: fr) :>>>:
+optimiseCFPair (Single (Arr fl :***: fr)) (Single (Arr gl :***: gr)) =
+    optimiseCF $ Single (Arr (gl . fl) :***: fr) :>>>:
         Single (idNoComp :***: gr)
-optimiseANFPair (Single (fl :***: Arr fr)) (Single (gl :***: Arr gr)) =
-    optimiseANF $ Single (fl :***: Arr (gr . fr)) :>>>:
+optimiseCFPair (Single (fl :***: Arr fr)) (Single (gl :***: Arr gr)) =
+    optimiseCF $ Single (fl :***: Arr (gr . fr)) :>>>:
         Single (gl :***: idNoComp)
-optimiseANFPair a (Single Id) = a
-optimiseANFPair (Single Id) b = b
-optimiseANFPair a b = a :>>>: b
+optimiseCFPair a (Single Id) = a
+optimiseCFPair (Single Id) b = b
+optimiseCFPair a b = a :>>>: b

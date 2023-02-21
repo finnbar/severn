@@ -11,20 +11,20 @@ runDec (BothDec f g) =
     in (Pair outF outG, \(Pair x y) -> BothDec (fCont x) (gCont y))
 runDec (LoopM f d g) =
     let (outD, dCont) = runDec d
-        (Pair loopOut looped, g') = runANF g outD
+        (Pair loopOut looped, g') = runCF g outD
     in (loopOut, \v ->
-            let (outF, f') = runANF f (Pair v looped)
+            let (outF, f') = runCF f (Pair v looped)
                 d' = dCont outF
             in LoopM f' d' g'
         )
 runDec (Pre v) = (v, Pre)
 
 runNoComp :: NoComp a b -> Val a -> (Val b, NoComp a b)
-runNoComp (LoopD anf dec) a =
+runNoComp (LoopD cf dec) a =
     let (outD, dCont) = runDec dec
-        (Pair outl outr, anf') = runANF anf (Pair a outD)
+        (Pair outl outr, cf') = runCF cf (Pair a outD)
         dec' = dCont outr
-    in (outl, LoopD anf' dec')
+    in (outl, LoopD cf' dec')
 runNoComp (Loop _) a = undefined
 runNoComp (f :***: g) (Pair a b) =
     let (l, f') = runNoComp f a
@@ -37,11 +37,11 @@ runNoComp (Dec d) a =
         d' = dCont a
     in (b, Dec d')
 
-runANF :: (ValidDesc a, ValidDesc b) => ANF a b -> Val a -> (Val b, ANF a b)
-runANF (f :>>>: g) a =
-    let (b, f') = runANF f a
-        (c, g') = runANF g b
+runCF :: (ValidDesc a, ValidDesc b) => CF a b -> Val a -> (Val b, CF a b)
+runCF (f :>>>: g) a =
+    let (b, f') = runCF f a
+        (c, g') = runCF g b
     in (c, f' :>>>: g')
-runANF (Single f) a =
+runCF (Single f) a =
     let (b, f') = runNoComp f a
     in (b, Single f')

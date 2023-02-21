@@ -76,18 +76,18 @@ useUpLoopRequirement gp = case loopStructure gp of
     -- Otherwise fail.
     _ -> Nothing
 
-maybeComp :: (ValidDesc a, ValidDesc b, ValidDesc c) => Gen (Maybe (ANF a b, SF (Simplify a) (Simplify b))) -> Gen (Maybe (ANF b c, SF (Simplify b) (Simplify c))) ->
-    Gen (Maybe (ANF a c, SF (Simplify a) (Simplify c)))
-maybeComp = maybeMap (\(anfl, sfl) (anfr, sfr) -> (anfl >>> anfr, sfl A.>>> sfr))
+maybeComp :: (ValidDesc a, ValidDesc b, ValidDesc c) => Gen (Maybe (CF a b, SF (Simplify a) (Simplify b))) -> Gen (Maybe (CF b c, SF (Simplify b) (Simplify c))) ->
+    Gen (Maybe (CF a c, SF (Simplify a) (Simplify c)))
+maybeComp = maybeMap (\(cfl, sfl) (cfr, sfr) -> (cfl >>> cfr, sfl A.>>> sfr))
 
-maybePar :: (ValidDesc a, ValidDesc b, ValidDesc c, ValidDesc d) => Gen (Maybe (ANF a b, SF (Simplify a) (Simplify b))) -> Gen (Maybe (ANF c d, SF (Simplify c) (Simplify d))) ->
-    Gen (Maybe (ANF (P a c) (P b d), SF (Simplify a, Simplify c) (Simplify b, Simplify d)))
-maybePar = maybeMap (\(anfl, sfl) (anfr, sfr) -> (anfl *** anfr, sfl A.*** sfr))
+maybePar :: (ValidDesc a, ValidDesc b, ValidDesc c, ValidDesc d) => Gen (Maybe (CF a b, SF (Simplify a) (Simplify b))) -> Gen (Maybe (CF c d, SF (Simplify c) (Simplify d))) ->
+    Gen (Maybe (CF (P a c) (P b d), SF (Simplify a, Simplify c) (Simplify b, Simplify d)))
+maybePar = maybeMap (\(cfl, sfl) (cfr, sfr) -> (cfl *** cfr, sfl A.*** sfr))
 
-debugSample :: Gen (Maybe (ANF a b, SF (Simplify a) (Simplify b))) -> IO ()
+debugSample :: Gen (Maybe (CF a b, SF (Simplify a) (Simplify b))) -> IO ()
 debugSample gen = do
-    (anf, sf) <- fromJust <$> Gen.sample gen
-    print anf
+    (cf, sf) <- fromJust <$> Gen.sample gen
+    print cf
 
 -- LOOP GENERATION
 
@@ -99,17 +99,17 @@ debugSample gen = do
 -- Okay! This is doable.
 
 makeLoop :: (ValidDesc a, ValidDesc b, ValidDesc c)
-    => Maybe (ANF (P a c) (P b c), SF (Simplify (P a c)) (Simplify (P b c)))
-    -> Maybe (ANF a b, SF (Simplify a) (Simplify b))
+    => Maybe (CF (P a c) (P b c), SF (Simplify (P a c)) (Simplify (P b c)))
+    -> Maybe (CF a b, SF (Simplify a) (Simplify b))
 makeLoop myb = case myb of
-    Just (anf, sf) -> Just (Single $ Loop anf, A.loop sf)
+    Just (cf, sf) -> Just (Single $ Loop cf, A.loop sf)
     Nothing -> Nothing
 
 -- We refer to structure ((f *** g) >>> h >>> (i *** j))
 genLoopM :: forall a b. (ValidDesc a, ValidDesc b)
     => PDesc a -> PDesc b
     -> GenParam
-    -> Gen (Maybe (ANF a b, SF (Simplify a) (Simplify b))) -- Generator of LoopD
+    -> Gen (Maybe (CF a b, SF (Simplify a) (Simplify b))) -- Generator of LoopD
 genLoopM pa pb gp = case useUpLoopRequirement gp of
     Just gp' ->
         Gen.choice [
@@ -119,7 +119,7 @@ genLoopM pa pb gp = case useUpLoopRequirement gp of
     Nothing -> return Nothing
     where
         genLoopM' :: forall s (v :: Desc s). (ValidDesc v) =>
-            PDesc v -> GenParam -> Gen (Maybe (ANF a b, SF (Simplify a) (Simplify b)))
+            PDesc v -> GenParam -> Gen (Maybe (CF a b, SF (Simplify a) (Simplify b)))
         genLoopM' pv gp' = do
             -- A loop with looped value of type v
             let (gpl, gpr) = splitBetween gp'
@@ -134,9 +134,9 @@ genLoopM pa pb gp = case useUpLoopRequirement gp of
 genLoopD :: forall a b x y. (ValidDesc a, ValidDesc b, ValidDesc x, ValidDesc y)
     => PDesc x -> PDesc y
     -> GenParam -- size of loop (g, h, j)
-    -> Gen (Maybe (ANF a x, SF (Simplify a) (Simplify x))) -- f
-    -> Gen (Maybe (ANF y b, SF (Simplify y) (Simplify b))) -- i
-    -> Gen (Maybe (ANF a b, SF (Simplify a) (Simplify b)))
+    -> Gen (Maybe (CF a x, SF (Simplify a) (Simplify x))) -- f
+    -> Gen (Maybe (CF y b, SF (Simplify y) (Simplify b))) -- i
+    -> Gen (Maybe (CF a b, SF (Simplify a) (Simplify b)))
 genLoopD px py gp fgen igen = case useUpLoopRequirement gp of
     Just gp' ->
         Gen.choice [
@@ -146,7 +146,7 @@ genLoopD px py gp fgen igen = case useUpLoopRequirement gp of
     Nothing -> return Nothing
     where
         genLoopD' :: forall s (v :: Desc s). (ValidDesc v) =>
-            PDesc v -> GenParam -> Gen (Maybe (ANF a b, SF (Simplify a) (Simplify b)))
+            PDesc v -> GenParam -> Gen (Maybe (CF a b, SF (Simplify a) (Simplify b)))
         genLoopD' pv gp' = do
             let (gpl, gpr) = splitBetween gp'
                 f = fgen
@@ -158,13 +158,13 @@ genLoopD px py gp fgen igen = case useUpLoopRequirement gp of
 
 -- CLASS FOR GENERATION
 
-genProg :: (ValidDesc a, ValidDesc b) => PDesc a -> PDesc b -> GenParam -> Gen (Maybe (ANF a b, SF (Simplify a) (Simplify b)))
+genProg :: (ValidDesc a, ValidDesc b) => PDesc a -> PDesc b -> GenParam -> Gen (Maybe (CF a b, SF (Simplify a) (Simplify b)))
 genProg pa pb gp =
     case pDescEq pa pb of
         Just HRefl -> genProgEqTypes pa gp
         Nothing -> genProgDiffTypes pa pb gp
     where
-        genProgEqTypes :: ValidDesc a => PDesc a -> GenParam -> Gen (Maybe (ANF a a, SF (Simplify a) (Simplify a)))
+        genProgEqTypes :: ValidDesc a => PDesc a -> GenParam -> Gen (Maybe (CF a a, SF (Simplify a) (Simplify a)))
         genProgEqTypes pa gp
             | size gp < 1 = return . allowIfNoLoopNeeded gp . Just $ genId pa
             | size gp == 1 = allowIfNoLoopNeeded gp <$> Gen.frequency [(9, Gen.constant . Just $ arbitraryFn pa pa), (1, Gen.constant . Just $ genPre pa)]
@@ -192,7 +192,7 @@ genProg pa pb gp =
                             maybePar (genDecoupled a a gpl) (genProg b b gpr),
                             maybePar (genProg a a gpl) (genDecoupled b b gpr),
                             genLoopD p p gp (Gen.constant (Just $ genId p)) (Gen.constant (Just $ genId p))]
-        genProgDiffTypes :: (ValidDesc a, ValidDesc b) => PDesc a -> PDesc b -> GenParam -> Gen (Maybe (ANF a b, SF (Simplify a) (Simplify b)))
+        genProgDiffTypes :: (ValidDesc a, ValidDesc b) => PDesc a -> PDesc b -> GenParam -> Gen (Maybe (CF a b, SF (Simplify a) (Simplify b)))
         genProgDiffTypes pa pb gp
             | size gp < 1 = return Nothing
             | size gp == 1 = return . allowIfNoLoopNeeded gp . Just $ arbitraryFn pa pb
@@ -203,7 +203,7 @@ genProg pa pb gp =
                         maybeComp (genProg pa pb gpl) (genProg pb pb gpr),
                         genLoopD pa pb gp (Gen.constant (Just $ genId pa)) (Gen.constant (Just $ genId pb))]
 
-genDecoupled :: (ValidDesc a, ValidDesc b) => PDesc a -> PDesc b -> GenParam -> Gen (Maybe (ANF a b, SF (Simplify a) (Simplify b)))
+genDecoupled :: (ValidDesc a, ValidDesc b) => PDesc a -> PDesc b -> GenParam -> Gen (Maybe (CF a b, SF (Simplify a) (Simplify b)))
 genDecoupled pa pb gp =
     case pDescEq pa pb of
         Just HRefl -> genDecoupledEqTypes pa gp
@@ -214,7 +214,7 @@ genDecoupled pa pb gp =
                     ++ [genLoopM pa pb gp]
             in chooseAndTry gens
     where
-        genDecoupledEqTypes :: ValidDesc a => PDesc a -> GenParam -> Gen (Maybe (ANF a a, SF (Simplify a) (Simplify a)))
+        genDecoupledEqTypes :: ValidDesc a => PDesc a -> GenParam -> Gen (Maybe (CF a a, SF (Simplify a) (Simplify a)))
         genDecoupledEqTypes pa gp
             | size gp < 1 = return Nothing
             | size gp == 1 = return . allowIfNoLoopNeeded gp . Just $ genPre pa
@@ -236,7 +236,7 @@ genDecoupled pa pb gp =
                                 genDecouplingWithinLoopD a b gp
                         gensP = maybePar (genDecoupled a a gpl) (genDecoupled b b gpr)
                     in chooseAndTry $ gensP : gensC
-        genDecouplingWithinLoopD :: (ValidDesc a, ValidDesc b) => PDesc a -> PDesc b -> GenParam -> [Gen (Maybe (ANF (P a b) (P a b), SF (Simplify a, Simplify b) (Simplify a, Simplify b)))]
+        genDecouplingWithinLoopD :: (ValidDesc a, ValidDesc b) => PDesc a -> PDesc b -> GenParam -> [Gen (Maybe (CF (P a b) (P a b), SF (Simplify a, Simplify b) (Simplify a, Simplify b)))]
         genDecouplingWithinLoopD pa pb gp =
             let (gp1, gp2) = splitBetween gp
                 (gp3, gp4) = splitBetween gp1
@@ -259,7 +259,7 @@ genDecoupled pa pb gp =
                 ]
 
 gensDecoupledPair :: (ValidDesc a, ValidDesc b, ValidDesc c) =>
-    PDesc a -> PDesc b -> PDesc c -> GenParam -> GenParam -> [Gen (Maybe (ANF a c, SF (Simplify a) (Simplify c)))]
+    PDesc a -> PDesc b -> PDesc c -> GenParam -> GenParam -> [Gen (Maybe (CF a c, SF (Simplify a) (Simplify c)))]
 gensDecoupledPair pa pb pc gpl gpr = [
         maybeComp (genProg pa pb gpl) (genDecoupled pb pc gpr),
         maybeComp (genDecoupled pa pb gpl) (genProg pb pc gpr),
@@ -269,21 +269,21 @@ gensDecoupledPair pa pb pc gpl gpr = [
 -- GENERATE FUNCTIONS OF ARBITRARY ARITY
 
 arbitraryFn :: (ValidDesc d, ValidDesc d') => PDesc d -> PDesc d' ->
-    (ANF d d', SF (Simplify d) (Simplify d'))
+    (CF d d', SF (Simplify d) (Simplify d'))
 arbitraryFn d d' = let
-    (anfl, sfl) = reduce d
-    (anfr, sfr) = duplicate d'
-    in (Single . Arr $ anfr . anfl, A.arr $ sfr . sfl)
+    (cfl, sfl) = reduce d
+    (cfr, sfr) = duplicate d'
+    in (Single . Arr $ cfr . cfl, A.arr $ sfr . sfl)
 
 reduce :: PDesc d -> (Val d -> Val (V Double), Simplify d -> Double)
 reduce ProxV = (\(One x) -> One (x+1), (+1))
 reduce (ProxP a b) =
     let
-        (anfl, sfl) = reduce a
-        (anfr, sfr) = reduce b
+        (cfl, sfl) = reduce a
+        (cfr, sfr) = reduce b
     in (\(Pair x y) ->
-            let One x' = anfl x
-                One y' = anfr y
+            let One x' = cfl x
+                One y' = cfr y
             in One $ x' + y',
         \(x,y) -> sfl x + sfr y)
 
@@ -291,19 +291,19 @@ duplicate :: PDesc d -> (Val (V Double) -> Val d, Double -> Simplify d)
 duplicate ProxV = (\(One x) -> One (x+1), (+1))
 duplicate (ProxP a b) =
     let
-        (anfl, sfl) = duplicate a
-        (anfr, sfr) = duplicate b
-    in (\x -> Pair (anfl x) (anfr x), \x -> (sfl x, sfr x))
+        (cfl, sfl) = duplicate a
+        (cfr, sfr) = duplicate b
+    in (\x -> Pair (cfl x) (cfr x), \x -> (sfl x, sfr x))
 
-genPre :: ValidDesc d => PDesc d -> (ANF d d, SF (Simplify d) (Simplify d))
+genPre :: ValidDesc d => PDesc d -> (CF d d, SF (Simplify d) (Simplify d))
 genPre pd = let (zl, zr) = genZero pd in (pre_ zl, iPre zr)
 
-genId :: ValidDesc d => PDesc d -> (ANF d d, SF (Simplify d) (Simplify d))
+genId :: ValidDesc d => PDesc d -> (CF d d, SF (Simplify d) (Simplify d))
 genId _ = (id_, C.id)
 
 genZero :: PDesc a -> (Val a, Simplify a)
 genZero ProxV = (One 0, 0)
 genZero (ProxP a b) =
-    let (anfl, sfl) = genZero a
-        (anfr, sfr) = genZero b
-    in (Pair anfl anfr, (sfl, sfr))
+    let (cfl, sfl) = genZero a
+        (cfr, sfr) = genZero b
+    in (Pair cfl cfr, (sfl, sfr))

@@ -15,26 +15,26 @@ import qualified Control.Category as C
 import LoopGen
 
 -- TODO: nesting within the decoupled bits.
-makeMassiveNestedLoop :: Int -> Gen (ANF (V Int) (V Int), SF Int Int)
+makeMassiveNestedLoop :: Int -> Gen (CF (V Int) (V Int), SF Int Int)
 makeMassiveNestedLoop 0 = Gen.constant (id_, C.id)
 makeMassiveNestedLoop d = Gen.choice [
         do
             -- LoopD
             pairLen <- Gen.integral (Range.linear 1 10)
             singleLen <- Gen.integral (Range.linear 1 5)
-            (anfmain, sfmain) <- genPairProg pairLen
-            (anftail, sftail) <- genSingleProg singleLen
+            (cfmain, sfmain) <- genPairProg pairLen
+            (cftail, sftail) <- genSingleProg singleLen
             (del, del') <- genOneVal
-            (anfnest, sfnest) <- makeMassiveNestedLoop (d-1)
+            (cfnest, sfnest) <- makeMassiveNestedLoop (d-1)
             Gen.choice [
                 return (
-                    loop $ anfmain >>> second (pre del >>> anfnest >>> anftail),
+                    loop $ cfmain >>> second (pre del >>> cfnest >>> cftail),
                     A.loop $ sfmain A.>>> A.second (iPre del' A.>>> sfnest A.>>> sftail)),
                 return (
-                    loop $ anfmain >>> (anfnest *** (pre del >>> anftail)),
+                    loop $ cfmain >>> (cfnest *** (pre del >>> cftail)),
                     A.loop $ sfmain A.>>> (sfnest A.*** (iPre del' A.>>> sftail))),
                 return (
-                    loop $ second (anfnest >>> pre del >>> anftail) >>> anfmain,
+                    loop $ second (cfnest >>> pre del >>> cftail) >>> cfmain,
                     A.loop $ A.second (sfnest A.>>> iPre del' A.>>> sftail) A.>>> sfmain
                 )
                 ],
@@ -42,16 +42,16 @@ makeMassiveNestedLoop d = Gen.choice [
             -- LoopM
             leftLen <- Gen.integral (Range.linear 1 5)
             rightLen <- Gen.integral (Range.linear 1 5)
-            (anfleft, sfleft) <- genPairProg leftLen
-            (anfright, sfright) <- genPairProg rightLen
+            (cfleft, sfleft) <- genPairProg leftLen
+            (cfright, sfright) <- genPairProg rightLen
             (del, del') <- genPairVal
-            (anfnest, sfnest) <- makeMassiveNestedLoop (d-1)
+            (cfnest, sfnest) <- makeMassiveNestedLoop (d-1)
             Gen.choice [
                 return (
-                    loop $ anfleft >>> first anfnest >>> pre del >>> anfright,
+                    loop $ cfleft >>> first cfnest >>> pre del >>> cfright,
                     A.loop $ sfleft A.>>> A.first sfnest A.>>> iPre del' A.>>> sfright),
                 return (
-                    loop $ anfleft >>> pre del >>> second anfnest >>> anfright,
+                    loop $ cfleft >>> pre del >>> second cfnest >>> cfright,
                     A.loop $ sfleft A.>>> iPre del' A.>>> A.second sfnest A.>>> sfright)
                 ]
 

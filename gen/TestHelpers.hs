@@ -53,13 +53,13 @@ genPairVal = bimapTwoGen Pair (,) genOneVal genOneVal
 genPairVals :: Gen ([Val (P (V Int) (V Int))], [(Int, Int)])
 genPairVals = unzip <$> Gen.list (Range.linear 5 20) genPairVal
 
-genSingle :: Gen (ANF ('V Int) ('V Int), SF Int Int)
+genSingle :: Gen (CF ('V Int) ('V Int), SF Int Int)
 genSingle = Gen.choice [
         Gen.constant (arr $ \(One a) -> One $ a+1, A.arr (+1)),
         bimapGen pre iPre genOneVal
     ]
 
-genPair :: Gen (ANF ('P ('V Int) ('V Int)) ('P ('V Int) ('V Int)), SF (Int, Int) (Int, Int))
+genPair :: Gen (CF ('P ('V Int) ('V Int)) ('P ('V Int) ('V Int)), SF (Int, Int) (Int, Int))
 genPair = Gen.choice [
         Gen.constant (arr $ \(Pair (One a) (One b)) -> Pair (One $ a + b) (One a), A.arr (\(x,y) -> (x+y, x))),
         bimapTwoGen (***) (A.***) genSingle genSingle,
@@ -68,7 +68,7 @@ genPair = Gen.choice [
     ]
 
 genTrio :: 
-    Gen (ANF ('P ('P ('V Int) ('V Int)) ('V Int)) ('P ('P ('V Int) ('V Int)) ('V Int)),
+    Gen (CF ('P ('P ('V Int) ('V Int)) ('V Int)) ('P ('P ('V Int) ('V Int)) ('V Int)),
         SF ((Int, Int), Int) ((Int, Int), Int))
 genTrio = Gen.choice [
         bimapTwoGen (***) (A.***) genPair genSingle,
@@ -78,22 +78,22 @@ genTrio = Gen.choice [
             A.arr $ \(~(~(a,b),c)) -> ((b,c),a))
     ]
 
-genSingleProg :: Int -> Gen (ANF ('V Int) ('V Int), SF Int Int)
+genSingleProg :: Int -> Gen (CF ('V Int) ('V Int), SF Int Int)
 genSingleProg 1 = genSingle
 genSingleProg n = bimapTwoGen (>>>) (A.>>>) genSingle $ genSingleProg (n-1)
 
-genPairProg :: Int -> Gen (ANF ('P ('V Int) ('V Int)) ('P ('V Int) ('V Int)), SF (Int, Int) (Int, Int))
+genPairProg :: Int -> Gen (CF ('P ('V Int) ('V Int)) ('P ('V Int) ('V Int)), SF (Int, Int) (Int, Int))
 genPairProg 1 = genPair
 genPairProg n = bimapTwoGen (>>>) (A.>>>) genPair $ genPairProg (n-1)
 
 genTrioProg :: Int ->
-    Gen (ANF ('P ('P ('V Int) ('V Int)) ('V Int)) ('P ('P ('V Int) ('V Int)) ('V Int)),
+    Gen (CF ('P ('P ('V Int) ('V Int)) ('V Int)) ('P ('P ('V Int) ('V Int)) ('V Int)),
         SF ((Int, Int), Int) ((Int, Int), Int))
 genTrioProg 1 = genTrio
 genTrioProg n = bimapTwoGen (>>>) (A.>>>) genTrio $ genTrioProg (n-1)
 
 -- Gen some composition which can be crushed into a pre.
-genCrushable :: Gen (ANF (P (V Int) (V Int)) (P (V Int) (V Int)), SF (Int, Int) (Int, Int))
+genCrushable :: Gen (CF (P (V Int) (V Int)) (P (V Int) (V Int)), SF (Int, Int) (Int, Int))
 genCrushable =
     do
         (a,a') <- genSingle
