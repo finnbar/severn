@@ -2,6 +2,16 @@ module Optimise where
 
 import NF
 
+-- This file contains a rough optimisation using the arrow laws:
+-- arr f >>> arr g = arr (g . f) and
+-- id >>> f = f = f >>> id
+-- We also perform a little bit of rearranging for cases like:
+-- (arr f *** g) >>> arr h
+-- = (id *** g) >>> (arr f *** id) >>> arr h
+-- = (id *** g) >>> arr (f *** id) >>> arr h
+-- = (id *** g) >>> arr (h . (f *** id))
+-- through a collection of pattern matches.
+
 firstV :: (ValidDesc a, ValidDesc b, ValidDesc c)
     => (Val a -> Val b) -> Val (P a c) -> Val (P b c)
 firstV f (Pair x y) = Pair (f x) y

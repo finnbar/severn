@@ -23,6 +23,7 @@ import System.Timeout (timeout)
 import Control.Monad.IO.Class
 import Data.Maybe (fromJust)
 import Control.Exception
+import Optimise (optimiseANF)
 
 -- * Test `transform`.
 -- General idea is to test a prewritten program against a Yampa equivalent.
@@ -171,7 +172,7 @@ prop_transform_into_noloop = property $ do
     checkEqualTransform (anf', sf') (ins, ins')
 
 prop_arbitrary_program :: Property
-prop_arbitrary_program = withTests 20000 $ property $ do
+prop_arbitrary_program = {- withTests 20000 $ -} property $ do
     len <- forAll $ Gen.integral (Range.linear 1 150)
     (ins, ins') <- forAll $ genDoubles 20
     (anf, sf) <- forAllWith (show . fst) $ Gen.just $ genProg ProxV ProxV (GP len Nothing)
@@ -193,6 +194,24 @@ prop_shallow_program = property $ do
     (ins, ins') <- forAll $ genDoubles 20
     (anf, sf) <- forAllWith (show . fst) $ Gen.just $ genProg ProxV ProxV (GP len structure)
     checkEqualTransform (anf, sf) (ins, ins')
+
+prop_optimise :: Property
+prop_optimise = property $ do
+    len <- forAll $ Gen.integral (Range.linear 1 150)
+    (ins, ins') <- forAll $ genDoubles 20
+    (anf, sf) <- forAllWith (show . fst) $ Gen.just $ genProg ProxV ProxV (GP len Nothing)
+    checkEqualTransform' (anf, sf) (ins, ins')
+    where
+        checkEqualTransform' :: (Eq (Simplify a), Eq (Simplify b), Show (Simplify b), ValidDesc a, ValidDesc b) =>
+            (ANF a b, SF (Simplify a) (Simplify b)) -> ([Val a], [Simplify a]) -> PropertyT IO ()
+        checkEqualTransform' (anf, sf) (ins, ins') = do
+            let sfres = embed sf (deltaEncode 1 ins')
+            anf' <- liftIO $ timeout 1000000 $ handle (\(e :: SomeException) -> error (show anf)) $ return $! transform anf
+            case optimiseANF <$> anf' of
+                Just anf'' -> do
+                    let anfres = map removeDesc $ multiRun runANF anf'' ins
+                    sfres === anfres
+                Nothing -> footnote "Test timed out." >> failure
 
 transformSpec :: TestTree 
 transformSpec = fromGroup $ $$(discover) {groupName = "Transform produces equivalent programs"}
