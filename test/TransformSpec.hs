@@ -1,4 +1,4 @@
-{-# LANGUAGE TemplateHaskell, DataKinds, FlexibleContexts, StandaloneKindSignatures,
+{-# LANGUAGE DataKinds, FlexibleContexts, StandaloneKindSignatures,
     OverloadedStrings, GADTs, PolyKinds, TypeFamilies, ExplicitForAll, BangPatterns,
     TypeApplications, ScopedTypeVariables #-}
 
@@ -7,8 +7,8 @@ module TransformSpec (transformSpec) where
 import Hedgehog
 import qualified Hedgehog.Gen as Gen
 import qualified Hedgehog.Range as Range
-import Test.Tasty.Hedgehog (fromGroup)
 import Test.Tasty (TestTree, localOption, Timeout(Timeout))
+import Test.Tasty.Hedgehog (fromGroup)
 
 import ArrowCF
 import Transform
@@ -85,13 +85,9 @@ prop_pre_merge = property $ do
         sf = A.loop $ A.second mergeSF A.>>> sfmain A.>>> A.second (splitSF A.>>> iPre del' A.>>> sftail)
     checkEqualTransform (cf, sf) (ins, ins')
 
--- This makes sure that the right crush property is applied - i.e. if we have
--- (a *** b) >>> (id *** c)
--- we get
--- (id *** b) >>> (a *** c) [and similar for a *** b >>> c *** id]
--- TODO: This test nondeterministically times out.
-prop_right_crush :: Property
-prop_right_crush = property $ do
+-- This checks for right fills.
+prop_right_fill :: Property
+prop_right_fill = property $ do
     (ins, ins') <- forAll genOneVals
     (cf, sf) <- forAllWith (show . fst) makeRightCrusher
     checkEqualTransform (cf, sf) (ins, ins')
@@ -214,4 +210,21 @@ prop_optimise = property $ do
                 Nothing -> footnote "Test timed out." >> failure
 
 transformSpec :: TestTree 
-transformSpec = fromGroup $ $$(discover) {groupName = "Transform produces equivalent programs"}
+transformSpec = fromGroup $ Group "Transform works and preserves program meaning" [
+        ("Programs without loops are unaffected", prop_transform_noloop),
+        ("Loops with `pre` in the right place for LoopD already can be transformed", prop_transform_trivial),
+        ("Loops which can be transformed with simple right slides work", prop_right_slide),
+        ("Loops with (pre i *** pre j) work", prop_pre_merge),
+        ("Loops where right fill is required work", prop_right_fill),
+        ("Loops which can be transformed with left slides work", prop_left_slide),
+        ("Loops which tansform into LoopM work", prop_loopM),
+        ("A pair of nested loops which do not affect each other can be transformed", prop_loop_in_loop),
+        ("Two loops in parallel can be transformed", prop_pair_loop),
+        ("A nested loop which contains the `pre` needed by the outer loop works", prop_depends_pre),
+        ("A nested loop which transforms into LoopM can be used as `pre` for the outer loop", prop_depends_loopM),
+        ("A loop which should be removed can be transformed", prop_transform_noloop),
+        ("An arbitrary program can be transformed", prop_arbitrary_program),
+        ("An arbitrary program with lots of nested loops can be transformed", prop_deep_program),
+        ("An arbitrary program with lots of composed loops can be transformed", prop_shallow_program),
+        ("Optimising the output program does not change its meaning", prop_optimise)
+    ]

@@ -1,4 +1,4 @@
-{-# LANGUAGE TemplateHaskell, DataKinds, FlexibleContexts,
+{-# LANGUAGE DataKinds, FlexibleContexts,
     OverloadedStrings, GADTs, PolyKinds, ExplicitForAll #-}
 
 module ArrowCFSpec (arrowCFSpec) where
@@ -40,4 +40,8 @@ prop_no_pre_pairs = property $ do
     clean === dirty
 
 arrowCFSpec :: TestTree
-arrowCFSpec = fromGroup $ $$(discover) {groupName = "ArrowNF invariants hold"}
+arrowCFSpec = fromGroup $ Group "ArrowCF invariants hold" [
+        ("ArrowCF preserves distributive law", prop_distribute),
+        ("ArrowCF removed surplus id terms", prop_no_id),
+        ("ArrowCF disallows pre (i,j)", prop_no_pre_pairs)
+    ]
