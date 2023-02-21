@@ -69,8 +69,8 @@ test-suite loop-compile-test
       TransformSpec
       ArbitraryProgram
       ArrowCFGen
-      LoopGen
       TestHelpers
+      TransformGen
       Paths_loop_compile
   hs-source-dirs:
       test
@@ -93,8 +93,8 @@ benchmark bench-vs-yampa
   other-modules:
       ArbitraryProgram
       ArrowCFGen
-      LoopGen
       TestHelpers
+      TransformGen
       Paths_loop_compile
   hs-source-dirs:
       benchmark
