@@ -1,7 +1,7 @@
 {-# LANGUAGE DataKinds, GADTs, PolyKinds, ScopedTypeVariables,
     StandaloneKindSignatures, FlexibleInstances #-}
 
-module ArrowNFGen where
+module ArrowCFGen where
 
 import Prelude hiding (id)
 

@@ -1,7 +1,7 @@
 {-# LANGUAGE TemplateHaskell, DataKinds, FlexibleContexts,
     OverloadedStrings, GADTs, PolyKinds, ExplicitForAll #-}
 
-module ArrowNFSpec (arrowNFSpec) where
+module ArrowCFSpec (arrowCFSpec) where
 
 import Hedgehog
 import qualified Hedgehog.Gen as Gen
@@ -12,7 +12,7 @@ import Test.Tasty (TestTree)
 import Data.Proxy (Proxy(..))
 
 import ArrowCF
-import ArrowNFGen
+import ArrowCFGen
 import TestHelpers
 
 -- * Make sure that ArrowNF upholds the properties we set about it.
@@ -39,5 +39,5 @@ prop_no_pre_pairs = property $ do
     (clean, dirty) <- forAll $ genNCompsWithPrePairs len
     clean === dirty
 
-arrowNFSpec :: TestTree
-arrowNFSpec = fromGroup $ $$(discover) {groupName = "ArrowNF invariants hold"}
+arrowCFSpec :: TestTree
+arrowCFSpec = fromGroup $ $$(discover) {groupName = "ArrowNF invariants hold"}
