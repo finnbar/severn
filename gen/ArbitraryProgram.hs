@@ -9,7 +9,7 @@ import qualified Hedgehog.Range as Range
 
 import TestHelpers
 
-import ArrowNF
+import ArrowCF
 import FRP.Yampa (SF, iPre)
 import qualified Control.Arrow as A
 import qualified Control.Category as C

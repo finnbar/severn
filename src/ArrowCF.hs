@@ -1,8 +1,8 @@
 {-# LANGUAGE TypeOperators, DataKinds #-}
 
-module ArrowNF (module NF, module ArrowNF) where
+module ArrowCF (module ComposedForm, module ArrowCF) where
 
-import NF
+import ComposedForm
 
 import Prelude hiding (id)
 import Data.Type.Equality (type (:~~:)(..))

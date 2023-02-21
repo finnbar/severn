@@ -1,7 +1,7 @@
 {-# LANGUAGE StandaloneKindSignatures, DataKinds, PolyKinds, RankNTypes,
     FlexibleContexts, TypeOperators, InstanceSigs, ScopedTypeVariables #-}
 
-module NF where
+module ComposedForm where
 
 import Data.Proxy
 import Data.Type.Equality (type (:~~:)(..))

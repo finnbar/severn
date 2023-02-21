@@ -1,6 +1,8 @@
 module Scratchpad where
 
-import ArrowNF
+import ArrowCF
+
+-- This file is a collection of functions you might want to use when testing this on the repl.
 
 inner :: CF (V Int) (V Int)
 inner = loop $ arr (\(Pair (One a) (One b)) -> Pair (One (a + b)) (One a)) >>> second (pre (One 0))

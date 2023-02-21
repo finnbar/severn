@@ -1,6 +1,6 @@
 module Optimise where
 
-import NF
+import ArrowCF
 
 -- This file contains a rough optimisation using the arrow laws:
 -- arr f >>> arr g = arr (g . f) and

@@ -10,7 +10,7 @@ import qualified Hedgehog.Range as Range
 import Test.Tasty.Hedgehog (fromGroup)
 import Test.Tasty (TestTree, localOption, Timeout(Timeout))
 
-import ArrowNF
+import ArrowCF
 import Transform
 import TestHelpers
 import LoopGen

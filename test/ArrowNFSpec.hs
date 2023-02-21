@@ -11,7 +11,7 @@ import Test.Tasty (TestTree)
 
 import Data.Proxy (Proxy(..))
 
-import ArrowNF
+import ArrowCF
 import ArrowNFGen
 import TestHelpers
 

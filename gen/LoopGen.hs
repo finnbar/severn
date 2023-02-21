@@ -6,7 +6,7 @@ import Hedgehog
 import qualified Hedgehog.Gen as Gen
 import qualified Hedgehog.Range as Range
 
-import ArrowNF
+import ArrowCF
 import TestHelpers
 
 import FRP.Yampa (deltaEncode, embed, SF, iPre)

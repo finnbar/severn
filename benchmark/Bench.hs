@@ -18,7 +18,7 @@ import Transform
 import ArbitraryProgram
 import TestHelpers
 import Run
-import NF
+import ArrowCF
 import ProgramGen
 import Optimise
 

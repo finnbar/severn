@@ -2,7 +2,7 @@
 
 module Transform where
 
-import ArrowNF
+import ArrowCF
 import Data.Maybe (fromJust)
 import Control.Applicative
 import Data.Type.Equality (type (:~~:)(..))

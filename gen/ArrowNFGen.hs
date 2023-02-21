@@ -12,7 +12,7 @@ import qualified Hedgehog.Range as Range
 import Data.Kind (Constraint)
 import Data.Proxy (Proxy(..))
 
-import ArrowNF
+import ArrowCF
 import TestHelpers
 
 -- Generates a pair of CFs: one of the form

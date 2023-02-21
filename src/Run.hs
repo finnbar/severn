@@ -2,7 +2,7 @@
 
 module Run where
 
-import NF
+import ArrowCF
 
 runDec :: Decoupled a b -> (Val b, Val a -> Decoupled a b)
 runDec (BothDec f g) =

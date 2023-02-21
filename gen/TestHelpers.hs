@@ -7,7 +7,7 @@ import Hedgehog
 import qualified Hedgehog.Gen as Gen
 import qualified Hedgehog.Range as Range
 
-import ArrowNF
+import ArrowCF
 import qualified Control.Arrow as A
 import FRP.Yampa (SF, iPre)
 
