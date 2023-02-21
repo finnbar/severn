@@ -4,6 +4,8 @@ module Run where
 
 import ArrowCF
 
+-- This allows CFs to be run (strictly), which we use for testing and benchmarking.
+
 runDec :: Decoupled a b -> (Val b, Val a -> Decoupled a b)
 runDec (BothDec f g) =
     let (outF, fCont) = runDec f

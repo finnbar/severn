@@ -3,6 +3,8 @@
 
 module ComposedForm where
 
+-- The definitions of ComposedForm (CF) along with typeclass instances and helper functions.
+
 import Data.Proxy
 import Data.Type.Equality (type (:~~:)(..))
 

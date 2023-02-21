@@ -2,6 +2,8 @@
 
 module ArrowCF (module ComposedForm, module ArrowCF) where
 
+-- The Arrow API for CFs, along with a few helper functions.
+
 import ComposedForm
 
 import Prelude hiding (id)

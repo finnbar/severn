@@ -2,6 +2,9 @@
 
 module Transform where
 
+-- The main transformation algorithm.
+-- Each function corresponds to one of our defined operations.
+
 import ArrowCF
 import Data.Maybe (fromJust)
 import Control.Applicative
