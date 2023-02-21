@@ -51,7 +51,6 @@ allowIfNoLoopNeeded gp ma = case loopStructure gp of
 
 -- Split a GenParam into two which sum to the original GenParam.
 -- Allows us to separate requirements (on number of program elements / loop structure).
--- TODO: May want to replace the halve in splitting up loops to be different.
 splitBetween :: GenParam -> (GenParam, GenParam)
 splitBetween gp =
     let (s,s') = halve (size gp)

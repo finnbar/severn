@@ -130,8 +130,6 @@ prop_pair_loop = property $ do
     checkEqualTransform (cf, sf) (ins, ins')
 
 -- Test where an inner loop acts as the pre for an outer loop
--- TODO: can we make a more complex version of this? e.g. when there's other things to tighten before the pre,
--- when it's at the front of the loop instead of the back etc.
 prop_depends_pre :: Property
 prop_depends_pre = property $ do
     (ins, ins') <- forAll genOneVals 
@@ -145,7 +143,6 @@ prop_depends_pre = property $ do
     checkEqualTransform (cf, sf) (ins, ins')
 
 -- Test where an inner LoopM is the pre of an outer loop.
--- TODO: a test where it's a mix of Pre and LoopM
 prop_depends_loopM :: Property
 prop_depends_loopM = property $ do
     (ins, ins') <- forAll genOneVals

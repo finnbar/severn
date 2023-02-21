@@ -19,7 +19,6 @@ import ArbitraryProgram
 import TestHelpers
 import Run
 import ArrowCF
-import ProgramGen
 import Optimise
 
 type TestPair = (CF (V Double) (V Double), SF Double Double)
