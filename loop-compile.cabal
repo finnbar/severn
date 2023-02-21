@@ -65,10 +65,10 @@ test-suite loop-compile-test
   type: exitcode-stdio-1.0
   main-is: Spec.hs
   other-modules:
-      ArrowNFSpec
+      ArrowCFSpec
       TransformSpec
       ArbitraryProgram
-      ArrowNFGen
+      ArrowCFGen
       LoopGen
       ProgramGen
       TestHelpers
@@ -93,7 +93,7 @@ benchmark bench-vs-yampa
   main-is: Bench.hs
   other-modules:
       ArbitraryProgram
-      ArrowNFGen
+      ArrowCFGen
       LoopGen
       ProgramGen
       TestHelpers
