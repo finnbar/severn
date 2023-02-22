@@ -50,7 +50,7 @@ transformLoopD lb =
     case repeatMaybe leftSlide lb of
         LB cf -> case tailsForm cf of
             -- loop (f >>> (g *** h))
-            TF f g h HRefl HRefl -> split h >>= \(SR hl d hr) ->
+            TF f g h HRefl -> split h >>= \(SR hl d hr) ->
                 Just $ tightening (second hr >>> f >>> (g *** hl)) d
             -- OnlyTails should have been caught earlier by transformNoLoop.
             _ -> Nothing
@@ -61,8 +61,8 @@ transformLoopD lb =
             Nothing -> x
 
 data TailsForm a g where
-    TF :: (ValidDesc a, ValidDesc b, ValidDesc c, ValidDesc d, ValidDesc e, ValidDesc f, ValidDesc g) =>
-        CF a b -> CF c d -> CF e f -> (b :~~: P c e) -> (g :~~: P d f) -> TailsForm a g
+    TF :: (ValidDesc a, ValidDesc c, ValidDesc d, ValidDesc e, ValidDesc f, ValidDesc g) =>
+        CF a (P c e) -> CF c d -> CF e f -> (g :~~: P d f) -> TailsForm a g
     OnlyTails :: (ValidDesc a, ValidDesc c, ValidDesc d, ValidDesc e, ValidDesc f, ValidDesc g) =>
         CF c d -> CF e f -> (a :~~: P c e) -> (g :~~: P d f) -> TailsForm a g
     NoTails :: (ValidDesc a, ValidDesc g) => CF a g -> TailsForm a g
@@ -84,10 +84,10 @@ tailsForm cf =
         tailsForm' cf' tl tr =
             case initLast cf' of
                 Left singl -> case unPar singl of
-                    Nothing -> TF cf' tl tr HRefl HRefl
+                    Nothing -> TF cf' tl tr HRefl
                     Just (UP f g HRefl HRefl) -> OnlyTails (Single f >>> tl) (Single g >>> tr) HRefl HRefl
                 Right (IL i l) -> case unPar l of
-                    Nothing -> TF cf' tl tr HRefl HRefl
+                    Nothing -> TF cf' tl tr HRefl
                     Just (UP f g HRefl HRefl) -> tailsForm' i (Single f >>> tl) (Single g >>> tr)
 
 -- Have to do this to allow for reasonable return types.
@@ -177,7 +177,7 @@ deriving instance Show (SplitResult a d)
 
 split :: (ValidDesc a, ValidDesc b) => CF a b -> Maybe (SplitResult a b)
 split cf = case tailsForm cf of
-        TF cf' f g HRefl HRefl ->
+        TF cf' f g HRefl ->
             case (,) <$> split f <*> split g of
                 Just (SR fl fd fr, SR gl gd gr) ->
                     Just $ SR (cf' >>> (fl *** gl)) (BothDec fd gd) (fr *** gr)
