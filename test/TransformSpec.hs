@@ -192,7 +192,7 @@ prop_optimise = property $ do
     len <- forAll $ Gen.integral (Range.linear 1 150)
     (ins, ins') <- forAll $ genDoubles 20
     (cf, sf) <- forAllWith (show . fst) $ Gen.just $ genProg ProxV ProxV (GP len Nothing)
-    checkEqualTransform' (cf, sf) (ins, ins')
+    checkEqualTransform' (optimiseCF cf, sf) (ins, ins')
     where
         checkEqualTransform' :: (Eq (Simplify a), Eq (Simplify b), Show (Simplify b), ValidDesc a, ValidDesc b) =>
             (CF a b, SF (Simplify a) (Simplify b)) -> ([Val a], [Simplify a]) -> PropertyT IO ()

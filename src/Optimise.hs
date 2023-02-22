@@ -33,8 +33,6 @@ optimiseDec (BothDec f g) = BothDec (optimiseDec f) (optimiseDec g)
 optimiseNoComp :: NoComp a b -> NoComp a b
 optimiseNoComp (f :***: g) =
     case (optimiseNoComp f, optimiseNoComp g) of
-        (Arr f', Id) -> Arr $ firstV f'
-        (Id, Arr g') -> Arr $ secondV g'
         (Arr f', Arr g') -> Arr $ bothV f' g'
         (f', g') -> f' :***: g' 
 optimiseNoComp (Loop f) = Loop $ optimiseCF f
