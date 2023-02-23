@@ -25,7 +25,7 @@ source-repository head
 
 library
   exposed-modules:
-      ArrowCF
+      ArrowCFSF
       ComposedForm
       Optimise
       Run
@@ -65,10 +65,10 @@ test-suite loop-compile-test
   type: exitcode-stdio-1.0
   main-is: Spec.hs
   other-modules:
-      ArrowCFSpec
+      ArrowCFSFSpec
       TransformSpec
       ArbitraryProgram
-      ArrowCFGen
+      ArrowCFSFGen
       TestHelpers
       TransformGen
       Paths_loop_compile
@@ -92,7 +92,7 @@ benchmark bench-vs-yampa
   main-is: Bench.hs
   other-modules:
       ArbitraryProgram
-      ArrowCFGen
+      ArrowCFSFGen
       TestHelpers
       TransformGen
       Paths_loop_compile
