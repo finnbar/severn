@@ -1,7 +1,7 @@
 {-# LANGUAGE StandaloneKindSignatures, DataKinds, PolyKinds, RankNTypes,
     FlexibleContexts, TypeOperators, InstanceSigs, ScopedTypeVariables #-}
 
-module ComposedForm where
+module CFSF where
 
 -- The definitions of ComposedForm (CFSF) along with typeclass instances and helper functions.
 

@@ -1,10 +1,10 @@
 {-# LANGUAGE TypeOperators, DataKinds #-}
 
-module ArrowCFSF (module ComposedForm, module ArrowCFSF) where
+module ArrowCFSF (module CFSF, module ArrowCFSF) where
 
 -- The Arrow API for CFSFs, along with a few helper functions.
 
-import ComposedForm
+import CFSF
 
 import Prelude hiding (id)
 import Data.Type.Equality (type (:~~:)(..))
