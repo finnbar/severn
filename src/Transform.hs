@@ -5,20 +5,20 @@ module Transform where
 -- The main transformation algorithm.
 -- Each function corresponds to one of our defined operations.
 
-import ArrowCF
+import ArrowCFSF
 import Data.Maybe (fromJust)
 import Control.Applicative
 import Data.Type.Equality (type (:~~:)(..))
 import Debug.Trace
 
 data LoopBox a b where
-    LB :: ValidDesc c => CF (P a c) (P b c) -> LoopBox a b
+    LB :: ValidDesc c => CFSF (P a c) (P b c) -> LoopBox a b
 deriving instance Show (LoopBox a b)
 
 -- Traverse the program to find Loop.
 -- ASSUMPTION: We assume that we do not start with any LoopD or LoopM, or at least
 -- that no LoopD/LoopM contain Loop.
-transform :: CF a b -> CF a b
+transform :: CFSF a b -> CFSF a b
 -- If we have a loop, go inside it, then once you're done transform that.
 transform (Single (Loop f)) = transformLoop (LB $ transform f)
 transform (Single (f :***: g)) = transform (Single f) *** transform (Single g)
@@ -27,28 +27,28 @@ transform (Single g) = Single g
 transform (f :>>>: g) = transform f >>> transform g
 
 -- The main transformation algorithm. Tries to transform to LoopM, and then LoopD.
-transformLoop :: (ValidDesc a, ValidDesc b) => LoopBox a b -> CF a b
+transformLoop :: (ValidDesc a, ValidDesc b) => LoopBox a b -> CFSF a b
 transformLoop lb = case (transformNoLoop lb <|> transformLoopM lb) <|> transformLoopD lb of
-    Just cf -> cf
+    Just cfsf -> cfsf
     Nothing -> error (show lb)
 
 -- Attempt to apply loop (f *** g) = f, thus avoiding the problem altogether.
 -- Since we have >>> at the top level, we need to check each part for ***.
-transformNoLoop :: (ValidDesc a, ValidDesc b) => LoopBox a b -> Maybe (CF a b)
-transformNoLoop (LB cf) = case tailsForm cf of
+transformNoLoop :: (ValidDesc a, ValidDesc b) => LoopBox a b -> Maybe (CFSF a b)
+transformNoLoop (LB cfsf) = case tailsForm cfsf of
     OnlyTails f g HRefl HRefl -> Just f
     _ -> Nothing
 
-transformLoopM :: (ValidDesc a, ValidDesc b) => LoopBox a b -> Maybe (CF a b)
-transformLoopM (LB cf) = split cf >>=
+transformLoopM :: (ValidDesc a, ValidDesc b) => LoopBox a b -> Maybe (CFSF a b)
+transformLoopM (LB cfsf) = split cfsf >>=
     \(SR fl d fr) -> Just . Single . Dec $ LoopM fl d fr
 
-transformLoopD :: (ValidDesc a, ValidDesc b) => LoopBox a b -> Maybe (CF a b)
+transformLoopD :: (ValidDesc a, ValidDesc b) => LoopBox a b -> Maybe (CFSF a b)
 transformLoopD lb =
     -- TO VERIFY: I think we can just keep left sliding because
     -- the only case where that'll go infinite is the NoLoop case.
     case repeatMaybe leftSlide lb of
-        LB cf -> case tailsForm cf of
+        LB cfsf -> case tailsForm cfsf of
             -- loop (f >>> (g *** h))
             TF f g h HRefl -> split h >>= \(SR hl d hr) ->
                 Just $ tightening (second hr >>> f >>> (g *** hl)) d
@@ -62,51 +62,51 @@ transformLoopD lb =
 
 data TailsForm a g where
     TF :: (ValidDesc a, ValidDesc c, ValidDesc d, ValidDesc e, ValidDesc f, ValidDesc g) =>
-        CF a (P c e) -> CF c d -> CF e f -> (g :~~: P d f) -> TailsForm a g
+        CFSF a (P c e) -> CFSF c d -> CFSF e f -> (g :~~: P d f) -> TailsForm a g
     OnlyTails :: (ValidDesc a, ValidDesc c, ValidDesc d, ValidDesc e, ValidDesc f, ValidDesc g) =>
-        CF c d -> CF e f -> (a :~~: P c e) -> (g :~~: P d f) -> TailsForm a g
-    NoTails :: (ValidDesc a, ValidDesc g) => CF a g -> TailsForm a g
+        CFSF c d -> CFSF e f -> (a :~~: P c e) -> (g :~~: P d f) -> TailsForm a g
+    NoTails :: (ValidDesc a, ValidDesc g) => CFSF a g -> TailsForm a g
 deriving instance Show (TailsForm a g)
 
 tailsForm :: forall a b. (ValidDesc a, ValidDesc b) =>
-    CF a b -> TailsForm a b
-tailsForm cf =
-    case initLast cf of
+    CFSF a b -> TailsForm a b
+tailsForm cfsf =
+    case initLast cfsf of
         Left singl -> case unPar singl of
             Just (UP f g HRefl HRefl) -> OnlyTails (Single f) (Single g) HRefl HRefl
-            Nothing -> NoTails cf
+            Nothing -> NoTails cfsf
         Right (IL i l) -> case unPar l of
             Just (UP f g HRefl HRefl) -> tailsForm' i (Single f) (Single g)
-            Nothing -> NoTails cf
+            Nothing -> NoTails cfsf
     where
         tailsForm' :: (ValidDesc c, ValidDesc d, ValidDesc e, ValidDesc f) =>
-            CF a (P c d) -> CF c e -> CF d f -> TailsForm a (P e f)
-        tailsForm' cf' tl tr =
-            case initLast cf' of
+            CFSF a (P c d) -> CFSF c e -> CFSF d f -> TailsForm a (P e f)
+        tailsForm' cfsf' tl tr =
+            case initLast cfsf' of
                 Left singl -> case unPar singl of
-                    Nothing -> TF cf' tl tr HRefl
+                    Nothing -> TF cfsf' tl tr HRefl
                     Just (UP f g HRefl HRefl) -> OnlyTails (Single f >>> tl) (Single g >>> tr) HRefl HRefl
                 Right (IL i l) -> case unPar l of
-                    Nothing -> TF cf' tl tr HRefl
+                    Nothing -> TF cfsf' tl tr HRefl
                     Just (UP f g HRefl HRefl) -> tailsForm' i (Single f >>> tl) (Single g >>> tr)
 
 -- Have to do this to allow for reasonable return types.
 data Tightening a f where
     TG :: (ValidDesc a, ValidDesc b, ValidDesc c, ValidDesc d, ValidDesc e, ValidDesc f) =>
-        CF a b -> CF (P b d) (P c e) -> CF c f -> Decoupled e d -> Tightening a f
+        CFSF a b -> CFSF (P b d) (P c e) -> CFSF c f -> Decoupled e d -> Tightening a f
 deriving instance Show (Tightening a f)
 
--- Apply left/right tightening to the CF.
+-- Apply left/right tightening to the CFSF.
 -- Use left/right fill to aid the process.
 tightening :: (ValidDesc a, ValidDesc b, ValidDesc c, ValidDesc d)
-    => CF (P a c) (P b d) -> Decoupled d c -> CF a b
-tightening cf dec = tighteningToCF $ leftTighten $ rightTighten (TG id_ cf id_ dec)
+    => CFSF (P a c) (P b d) -> Decoupled d c -> CFSF a b
+tightening cfsf dec = tighteningToCFSF $ leftTighten $ rightTighten (TG id_ cfsf id_ dec)
     where
-        tighteningToCF :: Tightening a b -> CF a b
-        tighteningToCF (TG l cf r dec) =
-            l >>> Single (LoopD cf dec) >>> r
+        tighteningToCFSF :: Tightening a b -> CFSF a b
+        tighteningToCFSF (TG l cfsf r dec) =
+            l >>> Single (LoopD cfsf dec) >>> r
         rightTighten :: Tightening a b -> Tightening a b
-        rightTighten (TG l cf r dec) = case initLast (push cf) of
+        rightTighten (TG l cfsf r dec) = case initLast (push cfsf) of
             Right (IL ss (f :***: g)) ->
                 -- Check we're not trying to slide id, because that will go infinite.
                 -- rightTighten (TG l (ss >>> (f :***: g)) r dec)
@@ -114,28 +114,28 @@ tightening cf dec = tighteningToCF $ leftTighten $ rightTighten (TG id_ cf id_ d
                 -- which are identical if f = Id
                 -- We therefore stop recursion if f = Id.
                 case isId f of
-                    Just HRefl -> TG l cf r dec
+                    Just HRefl -> TG l cfsf r dec
                     Nothing -> rightTighten (TG l (ss >>> Single (idNoComp :***: g)) (Single f >>> r) dec)
-            _ -> TG l cf r dec
+            _ -> TG l cfsf r dec
         leftTighten :: Tightening a b -> Tightening a b
-        leftTighten (TG l cf r dec) = case headTail (pushBack cf) of
+        leftTighten (TG l cfsf r dec) = case headTail (pushBack cfsf) of
             Right (HT (f :***: g) ss) ->
                 -- Check we're not trying to slide id, because that will go infinite (see rightTighten).
                 case isId f of
-                    Just HRefl -> TG l cf r dec
+                    Just HRefl -> TG l cfsf r dec
                     Nothing -> leftTighten (TG (l >>> Single f) (Single (idNoComp :***: g) >>> ss) r dec)
-            _ -> TG l cf r dec
+            _ -> TG l cfsf r dec
 
 -- Move all non-ID terms to the left.
-pushBack :: CF a b -> CF a b
-pushBack cf = case initLast cf of
-    Left _ -> cf
+pushBack :: CFSF a b -> CFSF a b
+pushBack cfsf = case initLast cfsf of
+    Left _ -> cfsf
     Right (IL an f) -> case initLast an of
         Left an' -> compTwoCompose $ fillBack (C2 an' f)
         Right (IL a n) ->
             pushBack' a $ fillBack (C2 n f)
     where
-        pushBack' :: ValidDesc a => CF a b -> CompTwo b c -> CF a c
+        pushBack' :: ValidDesc a => CFSF a b -> CompTwo b c -> CFSF a c
         pushBack' a (C2 n' f') = pushBack (a >>> Single n') >>> Single f'
         fillBack :: CompTwo a b -> CompTwo a b
         fillBack (C2 (f :***: g) (h :***: i)) =
@@ -145,15 +145,15 @@ pushBack cf = case initLast cf of
             Nothing -> C2 f g
 
 -- Move all non-ID terms to the right.
-push :: CF a b -> CF a b
-push cf = case headTail cf of
-    Left _ -> cf
+push :: CFSF a b -> CFSF a b
+push cfsf = case headTail cfsf of
+    Left _ -> cfsf
     Right (HT a nf) -> case headTail nf of
         Left nf' -> compTwoCompose $ fill (C2 a nf')
         Right (HT n f) ->
             push' (fill (C2 a n)) f
     where
-        push' :: ValidDesc c => CompTwo a b -> CF b c -> CF a c
+        push' :: ValidDesc c => CompTwo a b -> CFSF b c -> CFSF a c
         push' (C2 a' n') f = Single a' >>> push (Single n' >>> f)
         fill :: CompTwo a b -> CompTwo a b
         fill (C2 (f :***: g) (h :***: i)) =
@@ -172,28 +172,28 @@ asDecoupled _ = Nothing
 
 data SplitResult a d where
     SR :: (ValidDesc a, ValidDesc b, ValidDesc c, ValidDesc d) =>
-        CF a b -> Decoupled b c -> CF c d -> SplitResult a d
+        CFSF a b -> Decoupled b c -> CFSF c d -> SplitResult a d
 deriving instance Show (SplitResult a d)
 
-split :: (ValidDesc a, ValidDesc b) => CF a b -> Maybe (SplitResult a b)
-split cf = case tailsForm cf of
-        TF cf' f g HRefl ->
+split :: (ValidDesc a, ValidDesc b) => CFSF a b -> Maybe (SplitResult a b)
+split cfsf = case tailsForm cfsf of
+        TF cfsf' f g HRefl ->
             case (,) <$> split f <*> split g of
                 Just (SR fl fd fr, SR gl gd gr) ->
-                    Just $ SR (cf' >>> (fl *** gl)) (BothDec fd gd) (fr *** gr)
-                Nothing -> split cf' >>= \(SR al ad ar) -> Just $ SR al ad (ar >>> (f *** g))
+                    Just $ SR (cfsf' >>> (fl *** gl)) (BothDec fd gd) (fr *** gr)
+                Nothing -> split cfsf' >>= \(SR al ad ar) -> Just $ SR al ad (ar >>> (f *** g))
         OnlyTails f g HRefl HRefl ->
             (,) <$> split f <*> split g >>= \(SR fl fd fr, SR gl gd gr) ->
                 Just $ SR (fl *** gl) (BothDec fd gd) (fr *** gr)
-        NoTails cf' -> case initLast cf' of
+        NoTails cfsf' -> case initLast cfsf' of
             Left singl -> asDecoupled singl >>= \dec -> Just $ SR id_ dec id_
             Right (IL i l) -> case asDecoupled l of
                 Just dec -> Just $ SR i dec id_
                 Nothing -> split i >>= \(SR il idec ir) -> Just $ SR il idec (ir >>> Single l)
 
 leftSlide :: ValidDesc b => LoopBox a b -> Maybe (LoopBox a b)
-leftSlide (LB cf) =
-    case headTail (pushBack cf) of
+leftSlide (LB cfsf) =
+    case headTail (pushBack cfsf) of
         Left _ -> Nothing
         Right (HT s ss) -> case s of
             s1 :***: s2 -> case isId s2 of
@@ -205,8 +205,8 @@ leftSlide (LB cf) =
             _ -> Nothing
 
 rightSlide :: ValidDesc a => LoopBox a b -> Maybe (LoopBox a b)
-rightSlide (LB cf) =
-    case initLast (push cf) of
+rightSlide (LB cfsf) =
+    case initLast (push cfsf) of
         Left _ -> Nothing
         Right (IL ss s) -> case s of
             s1 :***: s2 -> case isId s2 of

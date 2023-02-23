@@ -3,7 +3,7 @@
 
 module ComposedForm where
 
--- The definitions of ComposedForm (CF) along with typeclass instances and helper functions.
+-- The definitions of ComposedForm (CFSF) along with typeclass instances and helper functions.
 
 import Data.Proxy
 import Data.Type.Equality (type (:~~:)(..))
@@ -44,12 +44,12 @@ instance forall a b. (ValidDesc a, ValidDesc b) => ValidDesc (P a b) where
 -- Note that this may be at any stage of compilation, so could be a mix of
 -- Loop/LoopD/LoopM.
 infixl 1 :>>>:
-type CF :: forall s s'. Desc s -> Desc s' -> *
-data CF x y where
+type CFSF :: forall s s'. Desc s -> Desc s' -> *
+data CFSF x y where
     (:>>>:) :: (ValidDesc a, ValidDesc b, ValidDesc c) =>
-        CF a b -> CF b c -> CF a c
+        CFSF a b -> CFSF b c -> CFSF a c
     Single :: (ValidDesc a, ValidDesc b) =>
-        NoComp a b -> CF a b
+        NoComp a b -> CFSF a b
 
 -- @CompTwo@ represents exactly two composed terms.
 -- This is used to avoid some awkward pattern matching.
@@ -61,12 +61,12 @@ data CompTwo a c where
 compTwoPar :: CompTwo a b -> CompTwo a' b' -> CompTwo (P a a') (P b b')
 compTwoPar (C2 fl fr) (C2 gl gr) = C2 (fl :***: gl) (fr :***: gr)
 
--- Converts a CompTwo into an CF, removing surplus Id terms
-compTwoCompose :: CompTwo a b -> CF a b
+-- Converts a CompTwo into an CFSF, removing surplus Id terms
+compTwoCompose :: CompTwo a b -> CFSF a b
 compTwoCompose (C2 f g) = removeId $ Single f :>>>: Single g
 
 -- Remove Id from a composition.
-removeId :: CF a b -> CF a b
+removeId :: CFSF a b -> CFSF a b
 removeId (Single f) = case isId f of
     Just HRefl -> id_
     Nothing -> Single f
@@ -79,7 +79,7 @@ removeId (f :>>>: g) =
             Just HRefl -> f'
             Nothing -> f' :>>>: g'
     where
-        isSingleId :: CF a b -> Maybe (a :~~: b)
+        isSingleId :: CFSF a b -> Maybe (a :~~: b)
         isSingleId (Single f) = isId f
         isSingleId _ = Nothing
 
@@ -97,9 +97,9 @@ infixl 3 :***:
 type NoComp :: forall s s'. Desc s -> Desc s' -> *
 data NoComp x y where
     Loop :: (ValidDesc a, ValidDesc b, ValidDesc c) =>
-        CF (P a c) (P b c) -> NoComp a b
+        CFSF (P a c) (P b c) -> NoComp a b
     LoopD :: (ValidDesc a, ValidDesc b, ValidDesc c, ValidDesc d) =>
-        CF (P a c) (P b d) -> Decoupled d c -> NoComp a b
+        CFSF (P a c) (P b d) -> Decoupled d c -> NoComp a b
     (:***:) :: (ValidDesc a, ValidDesc a', ValidDesc b, ValidDesc b') =>
         NoComp a b -> NoComp a' b' -> NoComp (P a a') (P b b')
     Arr :: (ValidDesc a, ValidDesc b) =>
@@ -122,7 +122,7 @@ data Decoupled a b where
     BothDec :: (ValidDesc a, ValidDesc b, ValidDesc a', ValidDesc b') =>
         Decoupled a b -> Decoupled a' b' -> Decoupled (P a a') (P b b')
     LoopM :: (ValidDesc a, ValidDesc b, ValidDesc c, ValidDesc d, ValidDesc e) =>
-        CF (P a c) d -> Decoupled d e -> CF e (P b c) -> Decoupled a b
+        CFSF (P a c) d -> Decoupled d e -> CFSF e (P b c) -> Decoupled a b
     -- This forces Pre (Pair i j) to be represented as Pre i *** Pre j.
     Pre :: ValidDesc (V a) =>
         Val (V (a :: *)) -> Decoupled (V a) (V a)
@@ -134,7 +134,7 @@ instance Show a => Show (Val (V a)) where
 instance (Show (Val a), Show (Val b)) => Show (Val (P a b)) where
     show (Pair a b) = "[|" ++ show a ++ ", " ++ show b ++ "|]"
 
-instance Show (CF a b) where
+instance Show (CFSF a b) where
     show (f :>>>: g) = "(" ++ show f ++ " >>> " ++ show g ++ ")"
     show (Single f) = show f
 
@@ -160,7 +160,7 @@ showArityOf _ = "[" ++ showArity (Proxy :: Proxy a) ++ "->" ++ showArity (Proxy 
 -- correctly notes precedence. We do not compare Arrs and Pres (cannot determine
 -- function equality, nor guarantee variable equality due to hidden types
 -- within our GADTs), but everything else compares correctly.
-instance Eq (CF a b) where
+instance Eq (CFSF a b) where
     f == f' = show f == show f'
 
 instance Eq a => Eq (Val (V a)) where
@@ -171,19 +171,19 @@ instance (Eq (Val a), Eq (Val b)) => Eq (Val (P a b)) where
 
 -- Helper lift functions
 
-lift_ :: (ValidDesc a, ValidDesc b) => NoComp a b -> CF a b
+lift_ :: (ValidDesc a, ValidDesc b) => NoComp a b -> CFSF a b
 lift_ = Single
 
-arr_ :: (ValidDesc a, ValidDesc b) => (Val a -> Val b) -> CF a b
+arr_ :: (ValidDesc a, ValidDesc b) => (Val a -> Val b) -> CFSF a b
 arr_ = Single . Arr
 
-id_ :: ValidDesc a => CF a a
+id_ :: ValidDesc a => CFSF a a
 id_ = Single (generateId (Proxy :: Proxy a))
 
 idNoComp :: ValidDesc a => NoComp a a
 idNoComp = generateId (Proxy :: Proxy a)
 
-pre_ :: ValidDesc a => Val a -> CF a a
+pre_ :: ValidDesc a => Val a -> CFSF a a
 pre_ = Single . preHelp
     where
         preHelp :: ValidDesc a => Val a -> NoComp a a

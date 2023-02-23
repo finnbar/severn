@@ -18,15 +18,15 @@ import Transform
 import ArbitraryProgram
 import TestHelpers
 import Run
-import ArrowCF
+import ArrowCFSF
 import Optimise
 
-type TestPair = (CF (V Double) (V Double), SF Double Double)
+type TestPair = (CFSF (V Double) (V Double), SF Double Double)
 
 -- guarantee there's five elements
 type TestSet = (TestPair, TestPair, TestPair, TestPair, TestPair)
 
-generateNetworks :: Gen (CF (V Double) (V Double), SF Double Double) -> IO TestSet
+generateNetworks :: Gen (CFSF (V Double) (V Double), SF Double Double) -> IO TestSet
 generateNetworks gen = do
     !a <- makeOne
     !b <- makeOne
@@ -37,37 +37,37 @@ generateNetworks gen = do
     where
         makeOne :: IO TestPair
         makeOne = do
-            (!cf, !sf) <- sample gen
-            let !cf' = transform cf
-            return (cf', sf)
+            (!cfsf, !sf) <- sample gen
+            let !cfsf' = transform cfsf
+            return (cfsf', sf)
 
-benchThisGenerator :: String -> Gen (CF (V Double) (V Double), SF Double Double) -> ([Val (V Double)], [Double]) -> Benchmark
+benchThisGenerator :: String -> Gen (CFSF (V Double) (V Double), SF Double Double) -> ([Val (V Double)], [Double]) -> Benchmark
 benchThisGenerator = undefined
 -- benchThisGenerator nam gen (ins, ins') = env (generateNetworks gen) $
---     \ ~((cf1,sf1), (cf2,sf2), (cf3,sf3), (cf4,sf4), (cf5, sf5)) -> bgroup nam [
+--     \ ~((cfsf1,sf1), (cfsf2,sf2), (cfsf3,sf3), (cfsf4,sf4), (cfsf5, sf5)) -> bgroup nam [
 --         bgroup "net-1" [
---             bench "sfrp" $ nfIO (map simplify <$> runCompCF cf1 ins),
+--             bench "sfrp" $ nfIO (map simplify <$> runCompCFSF cfsf1 ins),
 --             bench "sf" $ nf (embed sf1) (deltaEncode 1 ins')
 --         ],
 --         bgroup "net-2" [
---             bench "sfrp" $ nfIO (map simplify <$> runCompCF cf2 ins),
+--             bench "sfrp" $ nfIO (map simplify <$> runCompCFSF cfsf2 ins),
 --             bench "sf" $ nf (embed sf2) (deltaEncode 1 ins')
 --         ],
 --         bgroup "net-3" [
---             bench "sfrp" $ nfIO (map simplify <$> runCompCF cf3 ins),
+--             bench "sfrp" $ nfIO (map simplify <$> runCompCFSF cfsf3 ins),
 --             bench "sf" $ nf (embed sf3) (deltaEncode 1 ins')
 --         ],
 --         bgroup "net-4" [
---             bench "sfrp" $ nfIO (map simplify <$> runCompCF cf4 ins),
+--             bench "sfrp" $ nfIO (map simplify <$> runCompCFSF cfsf4 ins),
 --             bench "sf" $ nf (embed sf4) (deltaEncode 1 ins')
 --         ],
 --         bgroup "net-5" [
---             bench "sfrp" $ nfIO (map simplify <$> runCompCF cf5 ins),
+--             bench "sfrp" $ nfIO (map simplify <$> runCompCFSF cfsf5 ins),
 --             bench "sf" $ nf (embed sf5) (deltaEncode 1 ins')
 --         ]
 --     ]
 
-generateProgram :: GenParam -> Gen (CF (V Double) (V Double), SF Double Double)
+generateProgram :: GenParam -> Gen (CFSF (V Double) (V Double), SF Double Double)
 generateProgram gp = just $ genProg ProxV ProxV gp
 
 allGens :: ([Val (V Double)], [Double]) -> [Benchmark]
@@ -88,17 +88,17 @@ allGens inputs = concat $ flip map [25,50,100,150,200,250,300] $
         sizeToBranching :: Int -> [Int]
         sizeToBranching n = replicate (floor $ logBase 2.0 (fromIntegral n / 10)) 2
 
-benchCF :: CF (V Double) (V Double) -> [Val (V Double)] -> IO ()
-benchCF cf ins = do
+benchCFSF :: CFSF (V Double) (V Double) -> [Val (V Double)] -> IO ()
+benchCFSF cfsf ins = do
     inputRef <- newIORef ins
-    cfRef <- newIORef cf
+    cfsfRef <- newIORef cfsf
     replicateM_ 100000 $ do
         (i : inps) <- readIORef inputRef
         writeIORef inputRef inps
-        cf' <- readIORef cfRef
-        let (!vb, !cf'') = runCF cf' i
+        cfsf' <- readIORef cfsfRef
+        let (!vb, !cfsf'') = runCFSF cfsf' i
         forceM vb
-        writeIORef cfRef cf''
+        writeIORef cfsfRef cfsf''
 
 benchSF :: SF Double Double -> [Double] -> IO ()
 benchSF sf ins = do
@@ -120,12 +120,12 @@ main = do
     -- defaultMainWith defaultConfig (allGens (ins, ins')) -- NOTE: will likely need to change default config
 
     -- Let's construct some examples just to make sure.
-    (!cf, !sf) <- sample $ generateProgram (GP 50 Nothing) -- makeMassiveNestedLoop 100
-    let !cf' = optimiseCF $ transform cf
-    !ccf <- compile cf'
-    print cf'
+    (!cfsf, !sf) <- sample $ generateProgram (GP 50 Nothing) -- makeMassiveNestedLoop 100
+    let !cfsf' = optimiseCFSF $ transform cfsf
+    !ccfsf <- compile cfsf'
+    print cfsf'
     defaultMainWith defaultConfig [
-            bench "cf" $ nfIO (benchCF cf' ins),
+            bench "cfsf" $ nfIO (benchCFSF cfsf' ins),
             bench "sf" $ nfIO (benchSF sf ins')
         ]
 

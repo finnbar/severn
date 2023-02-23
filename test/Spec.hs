@@ -1,10 +1,10 @@
 import Test.Tasty
 
-import ArrowCFSpec
+import ArrowCFSFSpec
 import TransformSpec
 
 main :: IO ()
 main = defaultMain tests
 
 tests :: TestTree
-tests = testGroup "Tests" [arrowCFSpec, transformSpec]
+tests = testGroup "Tests" [arrowCFSFSpec, transformSpec]
