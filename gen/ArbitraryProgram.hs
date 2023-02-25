@@ -122,8 +122,8 @@ genLoopM pa pb gp = case useUpLoopRequirement gp of
         genLoopM' pv gp' = do
             -- A loop with looped value of type v
             let (gpl, gpr) = splitBetween gp'
-                f = Gen.constant $ Just $ genId pa
-                i = Gen.constant $ Just $ genId pb
+                f = Gen.constant $ Just $! genId pa
+                i = Gen.constant $ Just $! genId pb
                 h = genDecoupled (ProxP pa pv) (ProxP pb pv) gpl
                 (gprl, gprr) = splitBetween gpr
                 g = genProg pv pv gprl
@@ -152,7 +152,7 @@ genLoopD px py gp fgen igen = case useUpLoopRequirement gp of
                 i = igen
                 h = genProg (ProxP px pv) (ProxP py pv) gpl
                 g = genDecoupled pv pv gpr
-                j = Gen.constant . Just $ genId pv
+                j = Gen.constant . Just $! genId pv
             makeLoop <$> maybeComp (maybeComp (maybePar f g) h) (maybePar i j)
 
 -- CLASS FOR GENERATION
@@ -165,15 +165,15 @@ genProg pa pb gp =
     where
         genProgEqTypes :: ValidDesc a => PDesc a -> GenParam -> Gen (Maybe (CFSF a a, SF (Simplify a) (Simplify a)))
         genProgEqTypes pa gp
-            | size gp < 1 = return . allowIfNoLoopNeeded gp . Just $ genId pa
-            | size gp == 1 = allowIfNoLoopNeeded gp <$> Gen.frequency [(9, Gen.constant . Just $ arbitraryFn pa pa), (1, Gen.constant . Just $ genPre pa)]
+            | size gp < 1 = return . allowIfNoLoopNeeded gp . Just $! genId pa
+            | size gp == 1 = allowIfNoLoopNeeded gp <$> Gen.frequency [(9, Gen.constant . Just $! arbitraryFn pa pa), (1, Gen.constant . Just $! genPre pa)]
             | otherwise = case pa of
                 ProxV ->
                     let (gpl, gpr) = splitBetween gp
                     in chooseAndTry [
                             maybeComp (genProg ProxV ProxV gpl) (genProg ProxV ProxV gpr),
                             maybeComp (genProg ProxV (ProxP ProxV ProxV) gpl) (genProg (ProxP ProxV ProxV) ProxV gpr),
-                            genLoopD ProxV ProxV gp (Gen.constant (Just $ genId ProxV)) (Gen.constant (Just $ genId ProxV))]
+                            genLoopD ProxV ProxV gp (Gen.constant (Just $! genId ProxV)) (Gen.constant (Just $! genId ProxV))]
                 p@(ProxP a b) ->
                     let (gpl, gpr) = splitBetween gp
                     in chooseAndTry [
@@ -194,7 +194,7 @@ genProg pa pb gp =
         genProgDiffTypes :: (ValidDesc a, ValidDesc b) => PDesc a -> PDesc b -> GenParam -> Gen (Maybe (CFSF a b, SF (Simplify a) (Simplify b)))
         genProgDiffTypes pa pb gp
             | size gp < 1 = return Nothing
-            | size gp == 1 = return . allowIfNoLoopNeeded gp . Just $ arbitraryFn pa pb
+            | size gp == 1 = return . allowIfNoLoopNeeded gp . Just $! arbitraryFn pa pb
             | otherwise = 
                 let (gpl, gpr) = splitBetween gp
                 in chooseAndTry [
@@ -216,7 +216,7 @@ genDecoupled pa pb gp =
         genDecoupledEqTypes :: ValidDesc a => PDesc a -> GenParam -> Gen (Maybe (CFSF a a, SF (Simplify a) (Simplify a)))
         genDecoupledEqTypes pa gp
             | size gp < 1 = return Nothing
-            | size gp == 1 = return . allowIfNoLoopNeeded gp . Just $ genPre pa
+            | size gp == 1 = return . allowIfNoLoopNeeded gp . Just $! genPre pa
             | otherwise = case pa of
                 ProxV -> 
                     let (gpl, gpr) = splitBetween gp
@@ -247,12 +247,12 @@ genDecoupled pa pb gp =
                     -- LoopD...
                     (genLoopD (ProxP pa pb) (ProxP pa pb) gp5
                         -- with dec *** nodec
-                        (maybePar (genDecoupled pa pa gp6) (Gen.constant $ Just $ genId pb)) (Gen.constant (Just $ genId (ProxP pa pb)))),
+                        (maybePar (genDecoupled pa pa gp6) (Gen.constant $ Just $! genId pb)) (Gen.constant (Just $! genId (ProxP pa pb)))),
                 -- LoopD with (f *** Pre) right tightenable >>> (dec *** nodec)
                 -- LoopD...
                 maybeComp (genLoopD (ProxP pa pb) (ProxP pa pb) gp3
                     -- with right tightenable nodec *** dec
-                    (Gen.constant (Just $ genId (ProxP pa pb))) (maybePar (Gen.constant $ Just $ genId pa) (genDecoupled pb pb gp4)))
+                    (Gen.constant (Just $! genId (ProxP pa pb))) (maybePar (Gen.constant $ Just $! genId pa) (genDecoupled pb pb gp4)))
                     -- dec *** nodec
                     (maybePar (genDecoupled pa pa gp5) (genProg pb pb gp6))
                 ]
@@ -275,7 +275,7 @@ arbitraryFn d d' = let
     in (Single . Arr $ cfsfr . cfsfl, A.arr $ sfr . sfl)
 
 reduce :: PDesc d -> (Val d -> Val (V Double), Simplify d -> Double)
-reduce ProxV = (\(One x) -> One (x+1), (+1))
+reduce ProxV = (\(One x) -> One (x/2), (/2))
 reduce (ProxP a b) =
     let
         (cfsfl, sfl) = reduce a
@@ -283,11 +283,14 @@ reduce (ProxP a b) =
     in (\(Pair x y) ->
             let One x' = cfsfl x
                 One y' = cfsfr y
-            in One $ x' + y',
-        \(x,y) -> sfl x + sfr y)
+            in if x' /= 0 then One (y'/x') else One y',
+        \(x,y) -> 
+            let x' = sfl x
+                y' = sfr y
+            in if x' /= 0 then y'/x' else y')
 
 duplicate :: PDesc d -> (Val (V Double) -> Val d, Double -> Simplify d)
-duplicate ProxV = (\(One x) -> One (x+1), (+1))
+duplicate ProxV = (\(One x) -> One (x+1.1), (+1.1))
 duplicate (ProxP a b) =
     let
         (cfsfl, sfl) = duplicate a
