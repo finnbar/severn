@@ -55,25 +55,16 @@ main =
         !inputs <- sample $ genDoubles 100000 --genInputSamples 100000
         let sizes = [100]--[25,50,100,150,200,250,300]
         cPSL "Generating noLoop"
-        noLoop <- forM sizes $ \size -> benchThisGenerator (show size) (generateProgram (GP size (Just []))) inputs
-        cPSL "Generating deepLoop"
-        deepLoop <- forM sizes $ \size -> benchThisGenerator (show size) (generateProgram (GP size (Just $ sizeToDeep size))) inputs
-        cPSL "Generating shallowLoop"
-        shallowLoop <- forM sizes $ \size -> benchThisGenerator (show size) (generateProgram (GP size (Just $ sizeToShallow size))) inputs
-        cPSL "Generating mixedLoop"
-        mixedLoop <- forM sizes $ \size -> benchThisGenerator (show size) (generateProgram (GP size (Just $ sizeToBranching size))) inputs
+        noLoop <- forM sizes $ \size -> benchThisGenerator (show size) (generateProgram (GP size (0,1))) inputs
+        cPSL "Generating (1,8)"
+        loop18 <- forM sizes $ \size -> benchThisGenerator (show size) (generateProgram (GP size (1,8))) inputs
+        cPSL "Generating (1,6)"
+        loop16 <- forM sizes $ \size -> benchThisGenerator (show size) (generateProgram (GP size (1,6))) inputs
+        cPSL "Generating (1,4)"
+        loop14 <- forM sizes $ \size -> benchThisGenerator (show size) (generateProgram (GP size (1,4))) inputs
         cPSL "Done generating"
-        let !benches = [bgroup "no-loop" noLoop, bgroup "deep-loop" deepLoop, bgroup "shallow-loop" shallowLoop, bgroup "mixed-loop" mixedLoop]
+        let !benches = [bgroup "no-loop" noLoop, bgroup "(1,8)" loop18, bgroup "(1,6)" loop16, bgroup "(1,4)" loop14]
         defaultMainWith defaultConfig benches -- NOTE: will likely need to change default config
-    where
-        fraction :: Num a => a
-        fraction = 5
-        sizeToDeep :: Int -> [Int]
-        sizeToDeep n = replicate (n `div` fraction) 1
-        sizeToShallow :: Int -> [Int]
-        sizeToShallow n = [n `div` fraction]
-        sizeToBranching :: Int -> [Int]
-        sizeToBranching n = replicate (floor $ logBase 2.0 (fromIntegral n / fraction)) 2
 
 
     -- -- Let's construct some examples just to make sure.

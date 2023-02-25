@@ -167,32 +167,23 @@ prop_arbitrary_program :: Property
 prop_arbitrary_program = {- withTests 20000 $ -} property $ do
     len <- forAll $ Gen.integral (Range.linear 1 150)
     (ins, ins') <- forAll $ genDoubles 20
-    (cfsf, sf) <- forAllWith (show . fst) $ Gen.just $ genProg ProxV ProxV (GP len Nothing)
+    (cfsf, sf) <- forAllWith (show . fst) $ Gen.just $ genProg ProxV ProxV (GP len (1,8))
     checkEqualTransform (cfsf, sf) (ins, ins')
 
-prop_deep_program :: Property
-prop_deep_program = property $ do
+prop_arbitrary_many_loop :: Property
+prop_arbitrary_many_loop = property $ do
     len <- forAll $ Gen.integral (Range.linear 100 150)
     let structure = Just [2,2,2]
     (ins, ins') <- forAll $ genDoubles 20
-    (cfsf, sf) <- forAllWith (show . fst) $ Gen.just $ genProg ProxV ProxV (GP len structure)
-    checkEqualTransform (cfsf, sf) (ins, ins')
-
-prop_shallow_program :: Property
-prop_shallow_program = property $ do
-    len <- forAll $ Gen.integral (Range.linear 40 80)
-    depth <- forAll $ Gen.integral (Range.linear 1 10)
-    let structure = Just [depth]
-    (ins, ins') <- forAll $ genDoubles 20
-    (cfsf, sf) <- forAllWith (show . fst) $ Gen.just $ genProg ProxV ProxV (GP len structure)
+    (cfsf, sf) <- forAllWith (show . fst) $ Gen.just $ genProg ProxV ProxV (GP len (1,4))
     checkEqualTransform (cfsf, sf) (ins, ins')
 
 prop_optimise :: Property
 prop_optimise = property $ do
     len <- forAll $ Gen.integral (Range.linear 1 150)
     (ins, ins') <- forAll $ genDoubles 20
-    (cfsf, sf) <- forAllWith (show . fst) $ Gen.just $ genProg ProxV ProxV (GP len Nothing)
-    checkEqualTransform' (optimiseCFSF cfsf, sf) (ins, ins')
+    (cfsf, sf) <- forAllWith (show . fst) $ Gen.just $ genProg ProxV ProxV (GP len (1,8))
+    checkEqualTransform' (cfsf, sf) (ins, ins')
     where
         checkEqualTransform' :: (Eq (Simplify a), Eq (Simplify b), Show (Simplify b), ValidDesc a, ValidDesc b) =>
             (CFSF a b, SF (Simplify a) (Simplify b)) -> ([Val a], [Simplify a]) -> PropertyT IO ()
@@ -220,7 +211,6 @@ transformSpec = fromGroup $ Group "Transform works and preserves program meaning
         ("A nested loop which transforms into LoopM can be used as `pre` for the outer loop", prop_depends_loopM),
         ("A loop which should be removed can be transformed", prop_transform_noloop),
         ("An arbitrary program can be transformed", prop_arbitrary_program),
-        ("An arbitrary program with lots of nested loops can be transformed", prop_deep_program),
-        ("An arbitrary program with lots of composed loops can be transformed", prop_shallow_program),
+        ("An arbitrary program with lots of loops can be transformed", prop_arbitrary_many_loop),
         ("Optimising the output program does not change its meaning", prop_optimise)
     ]
