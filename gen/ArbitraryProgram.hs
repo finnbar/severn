@@ -261,7 +261,7 @@ arbitraryFn d d' = let
     in (Single . Arr $ cfsfr . cfsfl, A.arr $ sfr . sfl)
 
 reduce :: PDesc d -> (Val d -> Val (V Double), Simplify d -> Double)
-reduce ProxV = (\(One x) -> One (x+1), (+1))
+reduce ProxV = (\(One x) -> One (x/1.1), (/1.1))
 reduce (ProxP a b) =
     let
         (cfsfl, sfl) = reduce a
@@ -269,11 +269,11 @@ reduce (ProxP a b) =
     in (\(Pair x y) ->
             let One x' = cfsfl x
                 One y' = cfsfr y
-            in One $ x' + y',
-        \(x,y) -> sfl x + sfr y)
+            in One $ (x'/1.1) + (y'/1.1),
+        \(x,y) -> (sfl x / 1.1) + (sfr y / 1.1))
 
 duplicate :: PDesc d -> (Val (V Double) -> Val d, Double -> Simplify d)
-duplicate ProxV = (\(One x) -> One (x+1), (+1))
+duplicate ProxV = (\(One x) -> One (x*1.1), (*1.1))
 duplicate (ProxP a b) =
     let
         (cfsfl, sfl) = duplicate a
@@ -281,14 +281,14 @@ duplicate (ProxP a b) =
     in (\x -> Pair (cfsfl x) (cfsfr x), \x -> (sfl x, sfr x))
 
 genPre :: ValidDesc d => PDesc d -> (CFSF d d, SF (Simplify d) (Simplify d))
-genPre pd = let (zl, zr) = genZero pd in (pre_ zl, iPre zr)
+genPre pd = let (zl, zr) = genOne pd in (pre_ zl, iPre zr)
 
 genId :: ValidDesc d => PDesc d -> (CFSF d d, SF (Simplify d) (Simplify d))
 genId _ = (id_, C.id)
 
-genZero :: PDesc a -> (Val a, Simplify a)
-genZero ProxV = (One 0, 0)
-genZero (ProxP a b) =
-    let (cfsfl, sfl) = genZero a
-        (cfsfr, sfr) = genZero b
+genOne :: PDesc a -> (Val a, Simplify a)
+genOne ProxV = (One 1, 1)
+genOne (ProxP a b) =
+    let (cfsfl, sfl) = genOne a
+        (cfsfr, sfr) = genOne b
     in (Pair cfsfl cfsfr, (sfl, sfr))
