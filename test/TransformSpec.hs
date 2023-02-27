@@ -167,7 +167,7 @@ prop_arbitrary_program :: Property
 prop_arbitrary_program = {- withTests 20000 $ -} property $ do
     len <- forAll $ Gen.integral (Range.linear 1 150)
     (ins, ins') <- forAll $ genDoubles 20
-    (cfsf, sf) <- forAllWith (show . fst) $ Gen.just $ genProg ProxV ProxV (GP len (1,8))
+    (cfsf, sf) <- forAllWith (show . fst) $ Gen.just $ genProg ProxV ProxV (makeGenParam len 0.1)
     checkEqualTransform (cfsf, sf) (ins, ins')
 
 prop_arbitrary_many_loop :: Property
@@ -175,14 +175,14 @@ prop_arbitrary_many_loop = property $ do
     len <- forAll $ Gen.integral (Range.linear 100 150)
     let structure = Just [2,2,2]
     (ins, ins') <- forAll $ genDoubles 20
-    (cfsf, sf) <- forAllWith (show . fst) $ Gen.just $ genProg ProxV ProxV (GP len (1,4))
+    (cfsf, sf) <- forAllWith (show . fst) $ Gen.just $ genProg ProxV ProxV (makeGenParam len 0.25)
     checkEqualTransform (cfsf, sf) (ins, ins')
 
 prop_optimise :: Property
 prop_optimise = property $ do
     len <- forAll $ Gen.integral (Range.linear 1 150)
     (ins, ins') <- forAll $ genDoubles 20
-    (cfsf, sf) <- forAllWith (show . fst) $ Gen.just $ genProg ProxV ProxV (GP len (1,8))
+    (cfsf, sf) <- forAllWith (show . fst) $ Gen.just $ genProg ProxV ProxV (makeGenParam len 0.1)
     checkEqualTransform' (cfsf, sf) (ins, ins')
     where
         checkEqualTransform' :: (Eq (Simplify a), Eq (Simplify b), Show (Simplify b), ValidDesc a, ValidDesc b) =>
