@@ -106,7 +106,7 @@ tightening cfsf dec = tighteningToCFSF $ leftTighten $ rightTighten (TG id_ cfsf
         tighteningToCFSF (TG l cfsf r dec) =
             l >>> Single (LoopD cfsf dec) >>> r
         rightTighten :: Tightening a b -> Tightening a b
-        rightTighten (TG l cfsf r dec) = case initLast (push cfsf) of
+        rightTighten (TG l cfsf r dec) = case initLast (rightPush cfsf) of
             Right (IL ss (f :***: g)) ->
                 -- Check we're not trying to slide id, because that will go infinite.
                 -- rightTighten (TG l (ss >>> (f :***: g)) r dec)
@@ -118,7 +118,7 @@ tightening cfsf dec = tighteningToCFSF $ leftTighten $ rightTighten (TG id_ cfsf
                     Nothing -> rightTighten (TG l (ss >>> Single (idNoComp :***: g)) (Single f >>> r) dec)
             _ -> TG l cfsf r dec
         leftTighten :: Tightening a b -> Tightening a b
-        leftTighten (TG l cfsf r dec) = case headTail (pushBack cfsf) of
+        leftTighten (TG l cfsf r dec) = case headTail (leftPush cfsf) of
             Right (HT (f :***: g) ss) ->
                 -- Check we're not trying to slide id, because that will go infinite (see rightTighten).
                 case isId f of
@@ -127,16 +127,16 @@ tightening cfsf dec = tighteningToCFSF $ leftTighten $ rightTighten (TG id_ cfsf
             _ -> TG l cfsf r dec
 
 -- Move all non-ID terms to the left.
-pushBack :: CFSF a b -> CFSF a b
-pushBack cfsf = case initLast cfsf of
+leftPush :: CFSF a b -> CFSF a b
+leftPush cfsf = case initLast cfsf of
     Left _ -> cfsf
     Right (IL an f) -> case initLast an of
         Left an' -> compTwoCompose $ fillBack (C2 an' f)
         Right (IL a n) ->
-            pushBack' a $ fillBack (C2 n f)
+            leftPush' a $ fillBack (C2 n f)
     where
-        pushBack' :: ValidDesc a => CFSF a b -> CompTwo b c -> CFSF a c
-        pushBack' a (C2 n' f') = pushBack (a >>> Single n') >>> Single f'
+        leftPush' :: ValidDesc a => CFSF a b -> CompTwo b c -> CFSF a c
+        leftPush' a (C2 n' f') = leftPush (a >>> Single n') >>> Single f'
         fillBack :: CompTwo a b -> CompTwo a b
         fillBack (C2 (f :***: g) (h :***: i)) =
             compTwoPar (fillBack $ C2 f h) (fillBack $ C2 g i)
@@ -145,16 +145,16 @@ pushBack cfsf = case initLast cfsf of
             Nothing -> C2 f g
 
 -- Move all non-ID terms to the right.
-push :: CFSF a b -> CFSF a b
-push cfsf = case headTail cfsf of
+rightPush :: CFSF a b -> CFSF a b
+rightPush cfsf = case headTail cfsf of
     Left _ -> cfsf
     Right (HT a nf) -> case headTail nf of
         Left nf' -> compTwoCompose $ fill (C2 a nf')
         Right (HT n f) ->
-            push' (fill (C2 a n)) f
+            rightPush' (fill (C2 a n)) f
     where
-        push' :: ValidDesc c => CompTwo a b -> CFSF b c -> CFSF a c
-        push' (C2 a' n') f = Single a' >>> push (Single n' >>> f)
+        rightPush' :: ValidDesc c => CompTwo a b -> CFSF b c -> CFSF a c
+        rightPush' (C2 a' n') f = Single a' >>> rightPush (Single n' >>> f)
         fill :: CompTwo a b -> CompTwo a b
         fill (C2 (f :***: g) (h :***: i)) =
             compTwoPar (fill $ C2 f h) (fill $ C2 g i)
@@ -193,7 +193,7 @@ split cfsf = case tailsForm cfsf of
 
 leftSlide :: ValidDesc b => LoopBox a b -> Maybe (LoopBox a b)
 leftSlide (LB cfsf) =
-    case headTail (pushBack cfsf) of
+    case headTail (leftPush cfsf) of
         Left _ -> Nothing
         Right (HT s ss) -> case s of
             s1 :***: s2 -> case isId s2 of
@@ -206,7 +206,7 @@ leftSlide (LB cfsf) =
 
 rightSlide :: ValidDesc a => LoopBox a b -> Maybe (LoopBox a b)
 rightSlide (LB cfsf) =
-    case initLast (push cfsf) of
+    case initLast (rightPush cfsf) of
         Left _ -> Nothing
         Right (IL ss s) -> case s of
             s1 :***: s2 -> case isId s2 of

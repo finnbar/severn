@@ -66,17 +66,6 @@ main =
         let !benches = [bgroup "lp=0" noLoop, bgroup "lp=0.1" loop10, bgroup "lp=0.25" loop25, bgroup "lp=0.5" loop50]
         defaultMainWith defaultConfig benches -- NOTE: will likely need to change default config
 
-
-    -- -- Let's construct some examples just to make sure.
-    -- (!cfsf, !sf) <- sample $ generateProgram (GP 50 (Just [2,2,2])) -- makeMassiveNestedLoop 100
-    -- let !cfsf' = optimiseCFSF $ transform cfsf
-    -- !ccfsf <- compile cfsf'
-    -- print cfsf'
-    -- defaultMainWith defaultConfig [
-    --         bench "cfsf" $ whnfIO $ benchCFSF cfsf' ins,
-    --         bench "sf" $ whnfIO $ benchSF sf ins'
-    --     ]
-
 instance NFData a => NFData (Val ('V a)) where
     rnf (One a) = rnf a
 

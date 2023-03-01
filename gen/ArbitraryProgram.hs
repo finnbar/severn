@@ -17,6 +17,7 @@ import Data.Maybe (fromJust)
 import Data.Type.Equality (type (:~~:)(..))
 
 -- A PROXY-LIKE FOR DESCRIPTORS
+-- This allows us to say what arity we would like our generated SFs/CFSFs to be.
 
 type PDesc :: forall s. Desc s -> *
 data PDesc x where
@@ -45,7 +46,7 @@ allowIfNoLoopNeeded :: GenParam -> Maybe a -> Maybe a
 allowIfNoLoopNeeded gp ma = if loopCount gp == 0 then ma else Nothing
 
 -- Split a GenParam into two which sum to the original GenParam.
--- Allows us to separate requirements (on number of program elements / loop structure).
+-- Allows us to separate requirements (on number of program elements / loop count).
 splitBetween :: GenParam -> (GenParam, GenParam)
 splitBetween gp =
     let (s,s') = halve (size gp)
@@ -81,7 +82,6 @@ debugSample gen = do
 -- 1. j >>> g is decoupled. So generate decoupled x and then slide a random amount of times. h is then not decoupled.
 -- 2. h is decoupled. j and g therefore can be decoupled but don't need to be.
 -- Assign a size to each of f, g, h, i, j when doing this which sums to our target size.
--- Okay! This is doable.
 
 makeLoop :: (ValidDesc a, ValidDesc b, ValidDesc c)
     => Maybe (CFSF (P a c) (P b c), SF (Simplify (P a c)) (Simplify (P b c)))
@@ -143,12 +143,15 @@ genLoopD px py gp fgen igen = case useUpLoopRequirement gp of
 
 -- CLASS FOR GENERATION
 
+-- Generate a non-decoupled program of the arity described by @pa@ and @pb@.
 genProg :: (ValidDesc a, ValidDesc b) => PDesc a -> PDesc b -> GenParam -> Gen (Maybe (CFSF a b, SF (Simplify a) (Simplify b)))
 genProg pa pb gp =
     case pDescEq pa pb of
         Just HRefl -> genProgEqTypes pa gp
         Nothing -> genProgDiffTypes pa pb gp
     where
+        -- If the programs have the same types, we can return id.
+        -- Otherwise, the program of size one is an arbitrary arr, and then larger programs are composed from that.
         genProgEqTypes :: ValidDesc a => PDesc a -> GenParam -> Gen (Maybe (CFSF a a, SF (Simplify a) (Simplify a)))
         genProgEqTypes pa gp
             | size gp < 1 = return . allowIfNoLoopNeeded gp . Just $ genId pa
@@ -177,6 +180,7 @@ genProg pa pb gp =
                             maybePar (genDecoupled a a gpl) (genProg b b gpr),
                             maybePar (genProg a a gpl) (genDecoupled b b gpr),
                             genLoopD p p gp (Gen.constant (Just $ genId p)) (Gen.constant (Just $ genId p))]
+        -- In this case, we cannot generate id, but we can still generate arbitrary functions.
         genProgDiffTypes :: (ValidDesc a, ValidDesc b) => PDesc a -> PDesc b -> GenParam -> Gen (Maybe (CFSF a b, SF (Simplify a) (Simplify b)))
         genProgDiffTypes pa pb gp
             | size gp < 1 = return Nothing
@@ -188,10 +192,12 @@ genProg pa pb gp =
                         maybeComp (genProg pa pb gpl) (genProg pb pb gpr),
                         genLoopD pa pb gp (Gen.constant (Just $ genId pa)) (Gen.constant (Just $ genId pb))]
 
+-- Generate a decoupled program of the arity described by @pa@ and @pb@.
 genDecoupled :: (ValidDesc a, ValidDesc b) => PDesc a -> PDesc b -> GenParam -> Gen (Maybe (CFSF a b, SF (Simplify a) (Simplify b)))
 genDecoupled pa pb gp =
     case pDescEq pa pb of
         Just HRefl -> genDecoupledEqTypes pa gp
+        -- If the input and output are of different types, we can only generate a LoopM or a composition of decoupled programs.
         Nothing -> if size gp < 2 then return Nothing else
             let (gpl, gpr) = splitBetween gp
                 gens = gensDecoupledPair pa pb pb gpl gpr
@@ -199,6 +205,7 @@ genDecoupled pa pb gp =
                     ++ [genLoopM pa pb gp]
             in chooseAndTry gens
     where
+        -- If the input and output are of the same type, we can generate a pre as a small decoupled program.
         genDecoupledEqTypes :: ValidDesc a => PDesc a -> GenParam -> Gen (Maybe (CFSF a a, SF (Simplify a) (Simplify a)))
         genDecoupledEqTypes pa gp
             | size gp < 1 = return Nothing
@@ -243,6 +250,7 @@ genDecoupled pa pb gp =
                     (maybePar (genDecoupled pa pa gp5) (genProg pb pb gp6))
                 ]
 
+-- A decoupled SF can consist of f >>> g, where either (or both) f or g are decoupled.
 gensDecoupledPair :: (ValidDesc a, ValidDesc b, ValidDesc c) =>
     PDesc a -> PDesc b -> PDesc c -> GenParam -> GenParam -> [Gen (Maybe (CFSF a c, SF (Simplify a) (Simplify c)))]
 gensDecoupledPair pa pb pc gpl gpr = [
@@ -252,6 +260,7 @@ gensDecoupledPair pa pb pc gpl gpr = [
     ]
 
 -- GENERATE FUNCTIONS OF ARBITRARY ARITY
+-- We do this by transforming every input into a single value, and then duplicating that value over every output.
 
 arbitraryFn :: (ValidDesc d, ValidDesc d') => PDesc d -> PDesc d' ->
     (CFSF d d', SF (Simplify d) (Simplify d'))

@@ -1,4 +1,4 @@
-{-# LANGUAGE Strict #-}
+{-# LANGUAGE Strict, GADTs #-}
 
 module Run where
 
