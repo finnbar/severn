@@ -18,25 +18,28 @@ import FRP.Yampa
 import Transform
 import ArbitraryProgram
 import TestHelpers
-import Run
+import Run (runCFSF)
 import ArrowCFSF
 import Optimise
 
-type TestPair = (CFSF (V Double) (V Double), SF Double Double)
+data TestSet = TS {
+    cfsf :: CFSF (V Double) (V Double),
+    sf :: SF Double Double
+}
 
-generateNetworks :: Gen (CFSF (V Double) (V Double), SF Double Double) -> IO TestPair
+generateNetworks :: Gen (CFSF (V Double) (V Double), SF Double Double) -> IO TestSet
 generateNetworks gen = do
     (!cfsf, !sf) <- sample gen
     let !cfsf' = optimiseCFSF $ transform cfsf
-    return (cfsf', sf)
+    return $ TS cfsf' sf
 
 benchThisGenerator :: String -> Gen (CFSF (V Double) (V Double), SF Double Double) -> ([Val (V Double)], [Double]) -> IO Benchmark
 benchThisGenerator nam gen (ins, ins') = do
-    (!ccfsf1,!cfsf1,!sf1) <- generateNetworks gen
+    TS !ccfsf !cfsf !cfsflz !sf <- generateNetworks gen
     cPSL $ "Generated benchmarks for " ++ nam
     return $ bgroup nam [
-            bench "cfsf" $ whnfAppIO (benchCFSF cfsf1) ins,
-            bench "sf" $ whnfAppIO (benchSF sf1) ins'
+            bench "cfsf" $ whnfAppIO (benchCFSF cfsf) ins,
+            bench "sf" $ whnfAppIO (benchSF sf) ins'
         ]
 
 generateProgram :: GenParam -> Gen (CFSF (V Double) (V Double), SF Double Double)
@@ -65,7 +68,10 @@ generateGoodBracketing n = compPair (compPair (arbitraryFn ProxV ProxV) (genPre 
         ggb n = compPair (arbitraryFn ProxV ProxV) $ ggb (n-1)
 
 main :: IO ()
-main =
+main = allTests
+
+specialCases :: IO ()
+specialCases =
     do
         !inputs <- sample $ genDoubles 100000
         bad <- benchThisGenerator "bad bracketing" (return $ generateBadBracketing 300) inputs
@@ -77,22 +83,6 @@ main =
         let !benches = [bad, good{-, arronly0, arronly, arronly2, preonly-}]
         defaultMainWith defaultConfig benches
 
--- CURRENT TIMING OF ABOVE
--- bad/sfrp 3.583s
--- bad/cfsf 1.688s
--- bad/sf   1.026s
--- good/sfrp 1.341s
--- good/cfsf 1.311s
--- good/sf   815.1ms
--- arr/sfrp 26.93ms
--- arr/cfsf 16.74ms
--- arr/sf   24.00ms
--- pre/sfrp 24.95ms
--- pre/cfsf 15.18ms
--- pre/sf   24.11ms
--- run on my laptop
--- Yampa likely wins for the larger programs because the programs are equivalent to Arr >>> Pre,
--- and Yampa seems to keep winning on tiny programs - why? What startup cost do we have that Yampa doesn't?
 -- TODO Check the benchmarking programs themselves to make sure there's no weirdness there.
 -- I think it might be the cost of routing that's causing issues here?
 -- Also, I'm guessing that cfsf wins arr because strict vs lazy?
