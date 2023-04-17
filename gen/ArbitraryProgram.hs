@@ -64,7 +64,11 @@ useUpLoopRequirement gp =
 
 maybeComp :: (ValidDesc a, ValidDesc b, ValidDesc c) => Gen (Maybe (CFSF a b, SF (Simplify a) (Simplify b))) -> Gen (Maybe (CFSF b c, SF (Simplify b) (Simplify c))) ->
     Gen (Maybe (CFSF a c, SF (Simplify a) (Simplify c)))
-maybeComp = maybeMap (\(cfsfl, sfl) (cfsfr, sfr) -> (cfsfl >>> cfsfr, sfl A.>>> sfr))
+maybeComp = maybeMap compPair
+
+compPair :: (ValidDesc a, ValidDesc b, ValidDesc c) => (CFSF a b, SF (Simplify a) (Simplify b)) ->
+    (CFSF b c, SF (Simplify b) (Simplify c)) -> (CFSF a c, SF (Simplify a) (Simplify c))
+compPair (cfsfl, sfl) (cfsfr, sfr) = (cfsfl >>> cfsfr, sfl A.>>> sfr)
 
 maybePar :: (ValidDesc a, ValidDesc b, ValidDesc c, ValidDesc d) => Gen (Maybe (CFSF a b, SF (Simplify a) (Simplify b))) -> Gen (Maybe (CFSF c d, SF (Simplify c) (Simplify d))) ->
     Gen (Maybe (CFSF (P a c) (P b d), SF (Simplify a, Simplify c) (Simplify b, Simplify d)))
@@ -267,7 +271,7 @@ arbitraryFn :: (ValidDesc d, ValidDesc d') => PDesc d -> PDesc d' ->
 arbitraryFn d d' = let
     (cfsfl, sfl) = reduce d
     (cfsfr, sfr) = duplicate d'
-    in (Single . Arr $ cfsfr . cfsfl, A.arr $ sfr . sfl)
+    in (Single . Arr $! cfsfr . cfsfl, A.arr $! sfr . sfl)
 
 reduce :: PDesc d -> (Val d -> Val (V Double), Simplify d -> Double)
 reduce ProxV = (\(One x) -> One (x/1.1), (/1.1))

@@ -1,5 +1,5 @@
 {-# LANGUAGE StandaloneKindSignatures, DataKinds, PolyKinds, RankNTypes,
-    FlexibleContexts, TypeOperators, InstanceSigs, ScopedTypeVariables #-}
+    FlexibleContexts, TypeOperators, ScopedTypeVariables #-}
 
 module CFSF where
 
