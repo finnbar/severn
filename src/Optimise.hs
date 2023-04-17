@@ -1,3 +1,5 @@
+{-# LANGUAGE DataKinds, GADTs #-}
+
 module Optimise where
 
 import ArrowCFSF
@@ -5,12 +7,6 @@ import ArrowCFSF
 -- This file contains a rough optimisation using the arrow laws:
 -- arr f >>> arr g = arr (g . f) and
 -- id >>> f = f = f >>> id
--- We also perform a little bit of rearranging for cases like:
--- (arr f *** g) >>> arr h
--- = (id *** g) >>> (arr f *** id) >>> arr h
--- = (id *** g) >>> arr (f *** id) >>> arr h
--- = (id *** g) >>> arr (h . (f *** id))
--- through a collection of pattern matches.
 
 firstV :: (ValidDesc a, ValidDesc b, ValidDesc c)
     => (Val a -> Val b) -> Val (P a c) -> Val (P b c)
@@ -43,38 +39,23 @@ optimiseNoComp nc = nc
 
 optimiseCFSF :: CFSF a b -> CFSF a b
 optimiseCFSF (Single nc) = Single (optimiseNoComp nc)
-optimiseCFSF (f :>>>: g) = optimiseCFSFPair (optimiseCFSF f) (optimiseCFSF g)
+optimiseCFSF (f :>>>: g) = let
+        f' = optimiseCFSF f
+        g' = optimiseCFSF g
+    in case optimiseCFSFPair f' g' of
+        Just n -> optimiseCFSF n
+        Nothing -> f' :>>>: g'
 
 optimiseCFSFPair :: (ValidDesc a, ValidDesc b, ValidDesc c)
-    => CFSF a b -> CFSF b c -> CFSF a c
+    => CFSF a b -> CFSF b c -> Maybe (CFSF a c)
+-- arr f >>> arr g = arr (g.f)
 optimiseCFSFPair (Single (Arr f')) (Single (Arr g')) =
-    Single (Arr (g' . f'))
-optimiseCFSFPair (Single (Arr f')) (Single (Arr gl :***: gr)) =
-    optimiseCFSF $ (Single . Arr $ firstV gl . f') :>>>:
-        Single (idNoComp :***: gr)
-optimiseCFSFPair (Single (Arr f')) (Single (gl :***: Arr gr)) =
-    optimiseCFSF $ (Single . Arr $ secondV gr . f') :>>>:
-        Single (gl :***: idNoComp)
-optimiseCFSFPair (Single (Arr fl :***: fr)) (Single (Arr g')) =
-    optimiseCFSF $ Single (idNoComp :***: fr) :>>>:
-        (Single . Arr $ g' . firstV fl)
-optimiseCFSFPair (Single (fl :***: Arr fr)) (Single (Arr g')) =
-    optimiseCFSF $ Single (fl :***: idNoComp) :>>>:
-        (Single . Arr $ g' . secondV fr)
-optimiseCFSFPair (Single (fl :***: Arr fr)) (Single (Arr gl :***: gr)) =
-    optimiseCFSF $ Single (fl :***: idNoComp) :>>>:
-        Single (Arr gl :***: Arr fr) :>>>:
-        Single (idNoComp :***: gr)
-optimiseCFSFPair (Single (Arr fl :***: fr)) (Single (gl :***: Arr gr)) =
-    optimiseCFSF $ Single (idNoComp :***: fr) :>>>:
-        Single (Arr fl :***: Arr gr) :>>>:
-        Single (gl :***: idNoComp)
-optimiseCFSFPair (Single (Arr fl :***: fr)) (Single (Arr gl :***: gr)) =
-    optimiseCFSF $ Single (Arr (gl . fl) :***: fr) :>>>:
-        Single (idNoComp :***: gr)
-optimiseCFSFPair (Single (fl :***: Arr fr)) (Single (gl :***: Arr gr)) =
-    optimiseCFSF $ Single (fl :***: Arr (gr . fr)) :>>>:
-        Single (gl :***: idNoComp)
-optimiseCFSFPair a (Single Id) = a
-optimiseCFSFPair (Single Id) b = b
-optimiseCFSFPair a b = a :>>>: b
+    Just $ Single (Arr (g' . f'))
+-- f >>> id = f = id >>> f
+optimiseCFSFPair f (Single Id) = Just f
+optimiseCFSFPair (Single Id) f = Just f
+optimiseCFSFPair (f :>>>: g) (h :>>>: i) = optimiseCFSFPair g h >>= \v -> Just $ optimiseCFSF (f >>> v >>> i)
+optimiseCFSFPair (f :>>>: g) (Single h) = optimiseCFSFPair g (Single h) >>= \v -> Just $ optimiseCFSF (f >>> v)
+optimiseCFSFPair (Single f) (g :>>>: h) = optimiseCFSFPair (Single f) g >>= \v -> Just $ optimiseCFSF (v >>> h)
+-- If we could optimise, this is covered by the first case
+optimiseCFSFPair (Single f) (Single g) = Nothing

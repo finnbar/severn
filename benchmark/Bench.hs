@@ -74,7 +74,7 @@ main =
         arronly <- benchThisGenerator "arr micro" (return $ arbitraryFn ProxV ProxV) inputs
         arronly2 <- benchThisGenerator "arr2 micro" (return $ compPair (arbitraryFn ProxV ProxV) (arbitraryFn ProxV ProxV)) inputs
         preonly <- benchThisGenerator "pre micro" (return $ genPre ProxV) inputs
-        let !benches = [{-bad, good,-} arronly0, arronly, arronly2 {-, preonly-}]
+        let !benches = [bad, good{-, arronly0, arronly, arronly2, preonly-}]
         defaultMainWith defaultConfig benches
 
 -- CURRENT TIMING OF ABOVE
