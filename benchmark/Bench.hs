@@ -98,7 +98,7 @@ allTests =
     do
         cPSL "Running"
         !inputs <- sample $ genDoubles 100000 --genInputSamples 100000
-        let sizes = [25,50,100,150,200,250,300]
+        let sizes = [{-25,50,100,-}150{-,200,250,300-}]
         cPSL "Generating loopProportion=0"
         noLoop <- forM sizes $ \size -> benchThisGenerator (show size) (generateProgram (makeGenParam size 0)) inputs
         cPSL "Generating loopProportion=0.1"
