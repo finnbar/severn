@@ -7,6 +7,7 @@ module CFSF where
 
 import Data.Proxy
 import Data.Type.Equality (type (:~~:)(..))
+import Data.IORef
 
 -- * Data types and constructors
 
@@ -22,21 +23,38 @@ data Desc x where
 
 type Val :: forall s. Desc s -> *
 data Val x where
-    One :: a -> Val (V a)
+    One :: !a -> Val (V a)
     Pair :: (ValidDesc a, ValidDesc b) => Val a -> Val b -> Val (P a b)
 
+type Ref :: forall s. Desc s -> *
+data Ref x where
+    OR :: !(IORef a) -> Ref (V a)
+    PR :: (ValidDesc a, ValidDesc b) => !(Ref a) -> !(Ref b) -> Ref (P a b)
+
+writeRef :: Ref a -> Val a -> IO ()
+writeRef (OR ar) (One a) = writeIORef ar a
+writeRef (PR ar br) (Pair a b) = writeRef ar a >> writeRef br b
+
+readRef :: ValidDesc a => Ref a -> IO (Val a)
+readRef (OR ar) = One <$> readIORef ar
+readRef (PR ar br) = Pair <$> readRef ar <*> readRef br
+
+newRef :: Val a -> IO (Ref a)
+newRef (One a) = OR <$> newIORef a
+newRef (Pair a b) = PR <$> newRef a <*> newRef b
+
 class ValidDesc a where
-    emptyVal :: Proxy a -> Val a
+    emptyRef :: Proxy a -> IO (Ref a)
     generateId :: Proxy a -> NoComp a a
     showArity :: Proxy a -> String
 
 instance ValidDesc (V a :: Desc *) where
-    emptyVal _ = One undefined
+    emptyRef _ = OR <$> newIORef undefined
     generateId _ = Id
     showArity _ = "V"
 
 instance forall a b. (ValidDesc a, ValidDesc b) => ValidDesc (P a b) where
-    emptyVal Proxy = Pair (emptyVal (Proxy :: Proxy a)) $ emptyVal (Proxy :: Proxy b)
+    emptyRef Proxy = PR <$> emptyRef Proxy <*> emptyRef Proxy
     generateId Proxy = generateId (Proxy :: Proxy a) :***: generateId (Proxy :: Proxy b)
     showArity (Proxy :: Proxy (P a b)) = "P(" ++ showArity (Proxy :: Proxy a) ++ ")(" ++ showArity (Proxy :: Proxy b) ++ ")"
 
