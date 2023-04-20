@@ -41,6 +41,7 @@ library
       DataKinds
       PolyKinds
       FlexibleInstances
+      BangPatterns
   build-depends:
       base >=4.7 && <5
     , deepseq

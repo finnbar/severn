@@ -266,6 +266,7 @@ gensDecoupledPair pa pb pc gpl gpr = [
 -- GENERATE FUNCTIONS OF ARBITRARY ARITY
 -- We do this by transforming every input into a single value, and then duplicating that value over every output.
 
+{-# INLINE arbitraryFn #-}
 arbitraryFn :: (ValidDesc d, ValidDesc d') => PDesc d -> PDesc d' ->
     (CFSF d d', SF (Simplify d) (Simplify d'))
 arbitraryFn d d' = let
@@ -273,6 +274,7 @@ arbitraryFn d d' = let
     (cfsfr, sfr) = duplicate d'
     in (Single . Arr $! cfsfr . cfsfl, A.arr $! sfr . sfl)
 
+{-# INLINE reduce #-}
 reduce :: PDesc d -> (Val d -> Val (V Double), Simplify d -> Double)
 reduce ProxV = (\(One x) -> One (x/1.1), (/1.1))
 reduce (ProxP a b) =
@@ -285,6 +287,7 @@ reduce (ProxP a b) =
             in One $ (x'/1.1) + (y'/1.1),
         \(x,y) -> (sfl x / 1.1) + (sfr y / 1.1))
 
+{-# INLINE duplicate #-}
 duplicate :: PDesc d -> (Val (V Double) -> Val d, Double -> Simplify d)
 duplicate ProxV = (\(One x) -> One (x*1.1), (*1.1))
 duplicate (ProxP a b) =

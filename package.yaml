@@ -32,6 +32,7 @@ library:
   - DataKinds
   - PolyKinds
   - FlexibleInstances
+  - BangPatterns
 
 executables:
   loop-compile-exe:

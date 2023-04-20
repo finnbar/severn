@@ -33,9 +33,13 @@ generateNetworks gen = do
     let !cfsf' = optimiseCFSF $ transform cfsf
     return $ TS cfsf' sf
 
+-- TODO: make sure ccfsf etc are _fully_ evaluated (not WHNF but NF), likely via NFData instances.
+-- (Note that SFRP tests use rnf with some... somewhat lawful instances. This is likely what we need to do too.)
+-- ! only goes to WHNF, hence why I think SFRP doesn't really use it.
+-- Then make sure whnfAppIO is correct for our tests, rather than similar functions
 benchThisGenerator :: String -> Gen (CFSF (V Double) (V Double), SF Double Double) -> ([Val (V Double)], [Double]) -> IO Benchmark
 benchThisGenerator nam gen (ins, ins') = do
-    TS !ccfsf !cfsf !cfsflz !sf <- generateNetworks gen
+    TS !cfsf !sf <- generateNetworks gen
     cPSL $ "Generated benchmarks for " ++ nam
     return $ bgroup nam [
             bench "cfsf" $ whnfAppIO (benchCFSF cfsf) ins,
@@ -70,6 +74,18 @@ generateGoodBracketing n = compPair (compPair (arbitraryFn ProxV ProxV) (genPre 
 main :: IO ()
 main = allTests
 
+yampatest = do
+    let sf = snd $ generateGoodBracketing 200
+    (_,!inp100) <- sample $ genDoubles 1000
+    (_,!inp1000) <- sample $ genDoubles 10000
+    (_,!inp10000) <- sample $ genDoubles 100000
+    let bnch = [
+            bench "sf100" $ nfAppIO (benchSF sf) inp100,
+            bench "sf1000" $ nfAppIO (benchSF sf) inp1000,
+            bench "sf10000" $ nfAppIO (benchSF sf) inp10000]
+    defaultMainWith defaultConfig bnch
+
+
 specialCases :: IO ()
 specialCases =
     do
@@ -92,6 +108,7 @@ specialCases =
 -- If we wanted to make a really performant library we could implement similar combinators to avoid the performance cost,
 -- e.g. CL :: (pure SF) -> (effectful SF) -> (effectful SF)
 -- and then by not providing one which takes two pure SFs, force the arrow laws to apply by construction.
+-- TODO: Heap profile. Then look at rnf in Chupin's SFRP and compare to ours.
 
 allTests :: IO ()
 allTests =
@@ -108,7 +125,7 @@ allTests =
         cPSL "Generating loopProportion=0.5"
         loop50 <- forM sizes $ \size -> benchThisGenerator (show size) (generateProgram (makeGenParam size 0.5)) inputs
         cPSL "Done generating"
-        let !benches = [bgroup "lp=0" noLoop, bgroup "lp=0.1" loop10, bgroup "lp=0.25" loop25, bgroup "lp=0.5" loop50]
+        let !benches = [{-bgroup "lp=0" noLoop, -}bgroup "lp=0.1" loop10, bgroup "lp=0.25" loop25, bgroup "lp=0.5" loop50]
         defaultMainWith defaultConfig benches -- NOTE: will likely need to change default config
 
 instance NFData a => NFData (Val ('V a)) where
@@ -118,7 +135,7 @@ benchCFSF :: CFSF (V Double) (V Double) -> [Val (V Double)] -> IO ()
 benchCFSF cfsf ins = do
     inputRef <- newIORef ins
     cfsfRef <- newIORef cfsf
-    replicateM_ 100000 $ do
+    replicateM_ (length ins) $ do
         (i : inps) <- readIORef inputRef
         writeIORef inputRef inps
         cfsf' <- readIORef cfsfRef
@@ -130,7 +147,7 @@ benchSF :: SF Double Double -> [Double] -> IO ()
 benchSF sf ins = do
     inputRef <- newIORef ins
     handle <- reactInit (return 0) (\handle' _ v -> forceM v >> return True) sf
-    replicateM_ 100000 $ do
+    replicateM_ (length ins) $ do
         (i : inps) <- readIORef inputRef
         writeIORef inputRef inps
         b <- react handle (1, Just i)
