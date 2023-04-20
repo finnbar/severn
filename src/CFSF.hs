@@ -207,3 +207,25 @@ pre_ = Single . preHelp
         preHelp :: ValidDesc a => Val a -> NoComp a a
         preHelp (One a) = Dec $ Pre (One a)
         preHelp (Pair a b) = preHelp a :***: preHelp b
+
+forceCFSF :: CFSF a b -> ()
+forceCFSF (Single f) = forceNoComp f
+forceCFSF (f :>>>: g) = case forceCFSF f of
+    () -> forceCFSF g
+
+forceNoComp :: NoComp a b -> ()
+forceNoComp (Loop f) = forceCFSF f
+forceNoComp (LoopD f d) = case forceCFSF f of
+    () -> forceDecoupled d
+forceNoComp (f :***: g) = case forceNoComp f of
+    () -> forceNoComp g
+forceNoComp (Arr f) = f `seq` ()
+forceNoComp Id = ()
+forceNoComp (Dec d) = forceDecoupled d
+
+forceDecoupled :: Decoupled a b -> ()
+forceDecoupled (BothDec f g) = case forceDecoupled f of
+    () -> forceDecoupled g
+forceDecoupled (LoopM f d g) = case (forceCFSF f, forceCFSF g) of
+    ((), ()) -> forceDecoupled d
+forceDecoupled (Pre v) = v `seq` ()

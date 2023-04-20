@@ -30,6 +30,7 @@ data TestSet = TS {
 generateNetworks :: Gen (CFSF (V Double) (V Double), SF Double Double) -> IO TestSet
 generateNetworks gen = do
     (!cfsf, !sf) <- sample gen
+    !_ <- pure $ forceCFSF cfsf
     let !cfsf' = optimiseCFSF $ transform cfsf
     return $ TS cfsf' sf
 
