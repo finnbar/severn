@@ -92,6 +92,7 @@ benchmark bench-vs-yampa
   type: exitcode-stdio-1.0
   main-is: Bench.hs
   other-modules:
+      BenchRandom
       ArbitraryProgram
       ArrowCFSFGen
       TestHelpers
