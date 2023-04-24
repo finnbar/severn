@@ -72,7 +72,11 @@ compPair (cfsfl, sfl) (cfsfr, sfr) = (cfsfl >>> cfsfr, sfl A.>>> sfr)
 
 maybePar :: (ValidDesc a, ValidDesc b, ValidDesc c, ValidDesc d) => Gen (Maybe (CFSF a b, SF (Simplify a) (Simplify b))) -> Gen (Maybe (CFSF c d, SF (Simplify c) (Simplify d))) ->
     Gen (Maybe (CFSF (P a c) (P b d), SF (Simplify a, Simplify c) (Simplify b, Simplify d)))
-maybePar = maybeMap (\(cfsfl, sfl) (cfsfr, sfr) -> (cfsfl *** cfsfr, sfl A.*** sfr))
+maybePar = maybeMap parPair
+
+parPair :: (ValidDesc a, ValidDesc b, ValidDesc c, ValidDesc d) => (CFSF a b, SF (Simplify a) (Simplify b)) ->
+    (CFSF c d, SF (Simplify c) (Simplify d)) -> (CFSF (P a c) (P b d), SF (Simplify (P a c)) (Simplify (P b d)))
+parPair (cfsfl, sfl) (cfsfr, sfr) = (cfsfl *** cfsfr, sfl A.*** sfr)
 
 debugSample :: Gen (Maybe (CFSF a b, SF (Simplify a) (Simplify b))) -> IO ()
 debugSample gen = do
