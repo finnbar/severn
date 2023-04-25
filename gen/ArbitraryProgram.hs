@@ -270,35 +270,48 @@ gensDecoupledPair pa pb pc gpl gpr = [
 -- GENERATE FUNCTIONS OF ARBITRARY ARITY
 -- We do this by transforming every input into a single value, and then duplicating that value over every output.
 
-{-# INLINE arbitraryFn #-}
 arbitraryFn :: (ValidDesc d, ValidDesc d') => PDesc d -> PDesc d' ->
     (CFSF d d', SF (Simplify d) (Simplify d'))
-arbitraryFn d d' = let
-    (cfsfl, sfl) = reduce d
-    (cfsfr, sfr) = duplicate d'
-    in (Single . Arr $! cfsfr . cfsfl, A.arr $! sfr . sfl)
+arbitraryFn p p' = let (vf, f) = afn p p' in (Single $ Arr vf, A.arr f)
+    where
+        -- We enumerate cases here to encourange inlining.
+        afn :: (ValidDesc d, ValidDesc d') => PDesc d -> PDesc d' ->
+            (Val d -> Val d', Simplify d -> Simplify d')
+        afn ProxV ProxV = (\(One x) -> One (negate x), negate)
+        afn (ProxP ProxV ProxV) ProxV =
+            (\(Pair (One x) (One y)) -> One (negate $ x + y),
+            \(x,y) -> negate (x+y))
+        afn ProxV (ProxP ProxV ProxV) =
+            (\(One x) -> let x' = negate x in Pair (One x') (One x),
+            \x -> let x' = negate x in (x', x))
+        afn (ProxP ProxV ProxV) (ProxP ProxV ProxV) =
+            (\(Pair (One x) (One y)) -> let xy = x + y in Pair (One xy) (One $ negate xy),
+            \(x,y) -> let xy = x + y in (xy, negate xy))
+        -- We cannot avoid this in the general case.
+        afn d d' = let
+            (cfsfl, sfl) = reduce d
+            (cfsfr, sfr) = duplicate d'
+            in (cfsfr . cfsfl, sfr . sfl)
 
-{-# INLINE reduce #-}
-reduce :: PDesc d -> (Val d -> Val (V Double), Simplify d -> Double)
-reduce ProxV = (\(One x) -> One (x/1.1), (/1.1))
-reduce (ProxP a b) =
-    let
-        (cfsfl, sfl) = reduce a
-        (cfsfr, sfr) = reduce b
-    in (\(Pair x y) ->
-            let One x' = cfsfl x
-                One y' = cfsfr y
-            in One $ (x'/1.1) + (y'/1.1),
-        \(x,y) -> (sfl x / 1.1) + (sfr y / 1.1))
+        reduce :: PDesc d -> (Val d -> Val (V Double), Simplify d -> Double)
+        reduce ProxV = (\(One x) -> One (negate x), negate)
+        reduce (ProxP a b) =
+            let
+                (cfsfl, sfl) = reduce a
+                (cfsfr, sfr) = reduce b
+            in (\(Pair x y) ->
+                    let One x' = cfsfl x
+                        One y' = cfsfr y
+                    in One $ x' + y',
+                \(x,y) -> sfl x + sfr y)
 
-{-# INLINE duplicate #-}
-duplicate :: PDesc d -> (Val (V Double) -> Val d, Double -> Simplify d)
-duplicate ProxV = (\(One x) -> One (x*1.1), (*1.1))
-duplicate (ProxP a b) =
-    let
-        (cfsfl, sfl) = duplicate a
-        (cfsfr, sfr) = duplicate b
-    in (\x -> Pair (cfsfl x) (cfsfr x), \x -> (sfl x, sfr x))
+        duplicate :: PDesc d -> (Val (V Double) -> Val d, Double -> Simplify d)
+        duplicate ProxV = (Prelude.id, Prelude.id)
+        duplicate (ProxP a b) =
+            let
+                (cfsfl, sfl) = duplicate a
+                (cfsfr, sfr) = duplicate b
+            in (\x -> Pair (cfsfl x) (cfsfr x), \x -> (sfl x, sfr x))
 
 genPre :: ValidDesc d => PDesc d -> (CFSF d d, SF (Simplify d) (Simplify d))
 genPre pd = let (zl, zr) = genOne pd in (pre_ zl, iPre zr)
