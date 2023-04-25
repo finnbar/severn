@@ -21,6 +21,7 @@ data Desc x where
     V :: a -> Desc (a :: *)
     P :: Desc a -> Desc b -> Desc (a <> b)
 
+-- One is strict here since if you have the One constructor, you should have its internal value.
 type Val :: forall s. Desc s -> *
 data Val x where
     One :: !a -> Val (V a)
