@@ -8,6 +8,8 @@ import ArrowCFSF
 -- arr f >>> arr g = arr (g . f) and
 -- id >>> f = f = f >>> id
 
+-- TODO: Add Yampa's other optimisations.
+
 firstV :: (ValidDesc a, ValidDesc b, ValidDesc c)
     => (Val a -> Val b) -> Val (P a c) -> Val (P b c)
 firstV f (Pair x y) = Pair (f x) y
