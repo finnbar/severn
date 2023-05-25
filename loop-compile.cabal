@@ -93,6 +93,9 @@ benchmark bench-vs-yampa
   main-is: Bench.hs
   other-modules:
       BenchRandom
+      BenchTHTests
+      ProgGenTH
+      TestPrograms
       ArbitraryProgram
       ArrowCFSFGen
       TestHelpers
