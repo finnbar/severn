@@ -17,7 +17,7 @@ import Criterion
 benchmarkSet :: String ->
     (SF Double Double, CFSF (V Double) (V Double)) ->
     ([Val (V Double)], [Double]) -> IO Benchmark
-benchmarkSet nam (sf, cfsf) (ins, ins') = do
+benchmarkSet nam (!sf, cfsf) (ins, ins') = do
     let !optcfsf = optimiseCFSF cfsf
     !preIO <- compilePreIO optcfsf
     !allIO <- compile optcfsf
