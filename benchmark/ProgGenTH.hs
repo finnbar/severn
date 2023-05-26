@@ -8,9 +8,12 @@ module ProgGenTH where
 
 import ArbitraryProgram (PDesc(..))
 import TestHelpers (Simplify)
-import FRP.Yampa (SF)
+import BenchHelpers (bisect)
+import FRP.Yampa (SF, iPre)
 import qualified Control.Arrow as A
+import qualified Control.Category as C (id)
 import CFSF
+import ArrowCFSF
 
 import Language.Haskell.TH
 
@@ -53,3 +56,21 @@ prog22 n =
     let (sfl, cfsfl) = prog22 2
         (sfr, cfsfr) = prog22 (n-2)
     in ([|| $$sfl A.>>> $$sfr ||], [|| $$cfsfl :>>>: $$cfsfr ||])
+
+-- loop ((id *** f) >>> (id *** pre) >>> g)
+makeLoopD :: Quote m => Int -> Code m (SF Double Double, CFSF (V Double) (V Double))
+makeLoopD n =
+    let (n1, n2) = bisect n
+        (sff, cfsff) = prog11 n1
+        (sfg, cfsfg) = prog22 n2
+    in [|| (A.loop ((C.id A.*** ($$sff A.>>> iPre 0)) A.>>> $$sfg),
+        Single $ Loop ((Single Id *** ($$cfsff >>> Single (Dec (Pre (One 0))))) >>> $$cfsfg)) ||]
+
+-- loop (f >>> pre >>> g)
+makeLoopM :: Quote m => Int -> Code m (SF Double Double, CFSF (V Double) (V Double))
+makeLoopM n =
+    let (n1, n2) = bisect n
+        (sff, cfsff) = prog22 n1
+        (sfg, cfsfg) = prog22 n2
+    in [|| (A.loop ($$sff A.>>> iPre (0,0) A.>>> $$sfg),
+        Single $ Loop ($$cfsff :>>>: pre (Pair (One 0) (One 0)) :>>>: $$cfsfg)) ||]

@@ -18,7 +18,7 @@ benchmarkSet :: String ->
     (SF Double Double, CFSF (V Double) (V Double)) ->
     ([Val (V Double)], [Double]) -> IO Benchmark
 benchmarkSet nam (!sf, cfsf) (ins, ins') = do
-    let !optcfsf = optimiseCFSF cfsf
+    let !optcfsf = optimiseCFSF $ transform cfsf
     !preIO <- compilePreIO optcfsf
     !allIO <- compile optcfsf
     return $ bgroup nam [
