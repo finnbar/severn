@@ -14,33 +14,32 @@ import CFSF
 
 import Language.Haskell.TH
 
-in1out1 :: Quote m => (Code m (SF Double Double), Code m (NoComp (V Double) (V Double)))
-in1out1 = ([|| A.arr negate ||],
-    [|| Arr $ \(One !x) -> One (negate x) ||])
+in1out1sf :: SF Double Double
+in1out1sf = A.arr negate
+in1out1nc :: NoComp (V Double) (V Double)
+in1out1nc = Arr $ \(One !x) -> One (negate x)
 
-in2out2 :: Quote m => (Code m (SF (Double, Double) (Double, Double)), Code m (NoComp (P (V Double) (V Double)) (P (V Double) (V Double))))
-in2out2 = ([|| A.arr $ \(x,y) -> let xy = x + y in (xy, negate xy) ||],
-    [|| Arr $ \(Pair (One !x) (One !y)) -> let xy = x + y in Pair (One xy) (One $ negate xy) ||])
+in2out2sf :: SF (Double, Double) (Double, Double)
+in2out2sf = A.arr $ \(x,y) -> let xy = x + y in (xy, negate xy)
+in2out2nc :: NoComp (P (V Double) (V Double)) (P (V Double) (V Double))
+in2out2nc = Arr $ \(Pair (One !x) (One !y)) -> let xy = x + y in Pair (One xy) (One $ negate xy)
 
-in1out2 :: Quote m => (Code m (SF Double (Double, Double)), Code m (NoComp (V Double) (P (V Double) (V Double))))
-in1out2 = ([|| A.arr $ \x -> (x, x) ||],
-    [|| Arr $ \(!x) -> Pair x x ||])
+in1out2sf :: SF Double (Double, Double)
+in1out2sf = A.arr $ \x -> (x, x)
+in1out2nc :: NoComp (V Double) (P (V Double) (V Double))
+in1out2nc = Arr $ \(!x) -> Pair x x
 
-in2out1 :: Quote m => (Code m (SF (Double, Double) Double), Code m (NoComp (P (V Double) (V Double)) (V Double)))
-in2out1 = ([|| A.arr $ \(x, y) -> (x + y) ||],
-    [|| Arr $ \(Pair (One !x) (One !y)) -> One (x + y) ||])
+in2out1sf :: SF (Double, Double) Double
+in2out1sf = A.arr $ \(x, y) -> (x + y)
+in2out1nc :: NoComp (P (V Double) (V Double)) (V Double)
+in2out1nc = Arr $ \(Pair (One !x) (One !y)) -> One (x + y)
 
 prog11 :: Quote m => Int -> (Code m (SF Double Double), Code m (CFSF (V Double) (V Double)))
-prog11 1 = let (sf, nocomp) = in1out1 in ([|| $$sf ||], [|| Single $$nocomp ||])
-prog11 2 =
-    let (sf1, nocomp1) = in1out2
-        (sf2, nocomp2) = in2out1
-    in ([|| $$sf1 A.>>> $$sf2 ||], [|| Single $$nocomp1 :>>>: Single $$nocomp2 ||])
+prog11 1 = ([|| in1out1sf ||], [|| Single in1out1nc ||])
+prog11 2 = ([|| in1out2sf A.>>> in2out1sf ||], [|| Single in1out2nc :>>>: Single in2out1nc ||])
 prog11 n =
-    let (sf1, nocomp1) = in1out2
-        (sf2, nocomp2) = in2out1
-        (sfprog, cfsfprog) = prog22 (n-2)
-    in ([|| $$sf1 A.>>> $$sfprog A.>>> $$sf2 ||], [|| Single $$nocomp1 :>>>: $$cfsfprog :>>>: Single $$nocomp2 ||])
+    let (sfprog, cfsfprog) = prog22 (n-2)
+    in ([|| in1out2sf A.>>> $$sfprog A.>>> in2out1sf ||], [|| Single in1out2nc :>>>: $$cfsfprog :>>>: Single in2out1nc ||])
 
 makeProg11 :: Quote m => Int -> Code m (SF Double Double, CFSF (V Double) (V Double))
 makeProg11 n =
@@ -48,12 +47,8 @@ makeProg11 n =
     in [|| ($$sf, $$cfsf) ||]
 
 prog22 :: Quote m => Int -> (Code m (SF (Double, Double) (Double, Double)), Code m (CFSF (P (V Double) (V Double)) (P (V Double) (V Double))))
-prog22 1 = let (sf, nocomp) = in2out2 in ([|| $$sf ||], [|| Single $$nocomp ||])
-prog22 2 =
-    let (sf1, nocomp1) = in2out2
-        (sf2, nocomp2) = in1out1
-        (sf3, nocomp3) = in1out1
-    in ([|| $$sf1 A.>>> ($$sf2 A.*** $$sf3) ||], [|| Single $$nocomp1 :>>>: Single ($$nocomp2 :***: $$nocomp3) ||])
+prog22 1 = ([|| in2out2sf ||], [|| Single in2out2nc ||])
+prog22 2 = ([|| in2out2sf A.>>> (in1out1sf A.*** in1out1sf) ||], [|| Single in2out2nc :>>>: Single (in1out1nc :***: in1out1nc) ||])
 prog22 n =
     let (sfl, cfsfl) = prog22 2
         (sfr, cfsfr) = prog22 (n-2)
