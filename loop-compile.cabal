@@ -112,5 +112,6 @@ benchmark bench-vs-yampa
     , deepseq
     , hedgehog
     , loop-compile
+    , statistics
     , template-haskell
   default-language: Haskell2010

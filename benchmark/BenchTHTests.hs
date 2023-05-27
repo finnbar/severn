@@ -9,37 +9,25 @@ import CFSF
 import Criterion
 import Criterion.Types
 import Criterion.Main
+import Statistics.Types (cl99)
 
 benchTHTests :: IO ()
 benchTHTests = do
-    let ins' = [1..100000]
-        ins = map One ins'
-    nl <- noloop (ins, ins')
-    ld <- loopD (ins, ins')
-    lm <- loopM (ins, ins')
-    let benches = [nl, ld, lm]
-    defaultMainWith (defaultConfig {csvFile = Just "th_out.csv"}) benches
+    nl <- noloop
+    ld <- benchLoopD
+    lm <- benchLoopM
+    ldlm <- benchLoopDLoopM
+    let benches = [ld]
+    defaultMainWith (defaultConfig {csvFile = Just "th_out.csv", confInterval = cl99, timeLimit = 20}) benches
 
-noloop :: ([Val (V Double)], [Double]) -> IO Benchmark
-noloop (ins, ins') = do
-    single100 <- benchmarkSet "100" $$(makeProg11 100) (ins, ins')
-    single200 <- benchmarkSet "200" $$(makeProg11 200) (ins, ins')
-    single300 <- benchmarkSet "300" $$(makeProg11 300) (ins, ins')
-    let benches = [single100, single200, single300]
-    return $ bgroup "noloop" benches
+noloop :: IO Benchmark
+noloop = $$(buildBenchmark prog11 [50,100,150,200,250,300] "noloop")
 
-loopD :: ([Val (V Double)], [Double]) -> IO Benchmark
-loopD (ins, ins') = do
-    ld100 <- benchmarkSet "100" $$(makeLoopD 100) (ins, ins')
-    ld200 <- benchmarkSet "200" $$(makeLoopD 200) (ins, ins')
-    ld300 <- benchmarkSet "300" $$(makeLoopD 300) (ins, ins')
-    let benches = [ld100, ld200, ld300]
-    return $ bgroup "loopD" benches
+benchLoopD :: IO Benchmark
+benchLoopD = $$(buildBenchmark loopD [50,100,150,200,250,300] "loopD")
 
-loopM :: ([Val (V Double)], [Double]) -> IO Benchmark
-loopM (ins, ins') = do
-    lm100 <- benchmarkSet "100" $$(makeLoopM 100) (ins, ins')
-    lm200 <- benchmarkSet "200" $$(makeLoopM 200) (ins, ins')
-    lm300 <- benchmarkSet "300" $$(makeLoopM 300) (ins, ins')
-    let benches = [lm100, lm200, lm300]
-    return $ bgroup "loopM" benches
+benchLoopM :: IO Benchmark
+benchLoopM = $$(buildBenchmark loopM [50,100,150,200,250,300] "loopM")
+
+benchLoopDLoopM :: IO Benchmark
+benchLoopDLoopM = $$(buildBenchmark loopDloopM [50,100,150,200,250,300] "loopDloopM")

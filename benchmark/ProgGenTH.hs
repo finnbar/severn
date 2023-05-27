@@ -2,10 +2,6 @@
 
 module ProgGenTH where
 
--- TODO: Splice for arbitrary prog of size/arity
--- Then splice for single loop
--- Then test those (one loop of size x, zero loops of size x)
-
 import ArbitraryProgram (PDesc(..))
 import TestHelpers (Simplify)
 import BenchHelpers (bisect)
@@ -44,10 +40,8 @@ prog11 n =
     let (sfprog, cfsfprog) = prog22 (n-2)
     in ([|| in1out2sf A.>>> $$sfprog A.>>> in2out1sf ||], [|| Single in1out2nc :>>>: $$cfsfprog :>>>: Single in2out1nc ||])
 
-makeProg11 :: Quote m => Int -> Code m (SF Double Double, CFSF (V Double) (V Double))
-makeProg11 n =
-    let (sf, cfsf) = prog11 n
-    in [|| ($$sf, $$cfsf) ||]
+make :: Quote m => (Code m a, Code m b) -> Code m (a, b)
+make (l, r) = [|| ($$l, $$r) ||]
 
 prog22 :: Quote m => Int -> (Code m (SF (Double, Double) (Double, Double)), Code m (CFSF (P (V Double) (V Double)) (P (V Double) (V Double))))
 prog22 1 = ([|| in2out2sf ||], [|| Single in2out2nc ||])
@@ -58,19 +52,30 @@ prog22 n =
     in ([|| $$sfl A.>>> $$sfr ||], [|| $$cfsfl :>>>: $$cfsfr ||])
 
 -- loop ((id *** f) >>> (id *** pre) >>> g)
-makeLoopD :: Quote m => Int -> Code m (SF Double Double, CFSF (V Double) (V Double))
-makeLoopD n =
+loopD :: Quote m => Int -> (Code m (SF Double Double), Code m (CFSF (V Double) (V Double)))
+loopD n =
     let (n1, n2) = bisect n
         (sff, cfsff) = prog11 n1
         (sfg, cfsfg) = prog22 n2
-    in [|| (A.loop ((C.id A.*** ($$sff A.>>> iPre 0)) A.>>> $$sfg),
-        Single $ Loop ((Single Id *** ($$cfsff >>> Single (Dec (Pre (One 0))))) >>> $$cfsfg)) ||]
+    in ([|| A.loop ((C.id A.*** ($$sff A.>>> iPre 0)) A.>>> $$sfg) ||],
+        [|| Single $ Loop ((Single Id *** ($$cfsff >>> Single (Dec (Pre (One 0))))) >>> $$cfsfg) ||])
 
 -- loop (f >>> pre >>> g)
-makeLoopM :: Quote m => Int -> Code m (SF Double Double, CFSF (V Double) (V Double))
-makeLoopM n =
+loopM :: Quote m => Int -> (Code m (SF Double Double), Code m (CFSF (V Double) (V Double)))
+loopM n =
     let (n1, n2) = bisect n
         (sff, cfsff) = prog22 n1
         (sfg, cfsfg) = prog22 n2
-    in [|| (A.loop ($$sff A.>>> iPre (0,0) A.>>> $$sfg),
-        Single $ Loop ($$cfsff :>>>: pre (Pair (One 0) (One 0)) :>>>: $$cfsfg)) ||]
+    in ([|| A.loop ($$sff A.>>> iPre (0,0) A.>>> $$sfg) ||],
+        [|| Single $ Loop ($$cfsff :>>>: pre (Pair (One 0) (One 0)) :>>>: $$cfsfg) ||])
+
+-- loop ((id *** f) >>> (id *** loop (h >>> pre >>> i)) >>> g)
+loopDloopM :: Quote m => Int -> (Code m (SF Double Double), Code m (CFSF (V Double) (V Double)))
+loopDloopM n =
+    let (fgn, loopn) = bisect n
+        (sfinner, cfsfinner) = loopM loopn
+        (fn, gn) = bisect fgn
+        (sff, cfsff) = prog11 fn
+        (sfg, cfsfg) = prog22 gn
+    in ([|| A.loop ((C.id A.*** ($$sff A.>>> $$sfinner)) A.>>> $$sfg) ||],
+        [|| Single $ Loop ((Single Id *** ($$cfsff >>> $$cfsfinner)) >>> $$cfsfg) ||])
