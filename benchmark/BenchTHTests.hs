@@ -17,7 +17,7 @@ benchTHTests = do
     ld <- benchLoopD
     lm <- benchLoopM
     ldlm <- benchLoopDLoopM
-    let benches = [ld]
+    let benches = [nl, ld, lm, ldlm]
     defaultMainWith (defaultConfig {csvFile = Just "th_out.csv", confInterval = cl99, timeLimit = 20}) benches
 
 noloop :: IO Benchmark
