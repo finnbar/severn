@@ -25,7 +25,7 @@ data Desc x where
 type Val :: forall s. Desc s -> *
 data Val x where
     One :: !a -> Val (V a)
-    Pair :: (ValidDesc a, ValidDesc b) => Val a -> Val b -> Val (P a b)
+    Pair :: (ValidDesc a, ValidDesc b) => !(Val a) -> !(Val b) -> Val (P a b)
 
 type Ref :: forall s. Desc s -> *
 data Ref x where
