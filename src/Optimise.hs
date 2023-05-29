@@ -5,10 +5,9 @@ module Optimise where
 import ArrowCFSF
 
 -- This file contains a rough optimisation using the arrow laws:
--- arr f >>> arr g = arr (g . f) and
+-- arr f >>> arr g = arr (g . f)
 -- id >>> f = f = f >>> id
-
--- TODO: Add Yampa's other optimisations.
+-- arr f *** arr g = arr (f *** g) for merging together arrs in parallel
 
 firstV :: (ValidDesc a, ValidDesc b, ValidDesc c)
     => (Val a -> Val b) -> Val (P a c) -> Val (P b c)
@@ -32,6 +31,9 @@ optimiseNoComp :: NoComp a b -> NoComp a b
 optimiseNoComp (f :***: g) =
     case (optimiseNoComp f, optimiseNoComp g) of
         (Arr f', Arr g') -> Arr $ bothV f' g'
+        -- This is a little naive, but it does the job.
+        (Arr f', Id) -> Arr $ firstV f'
+        (Id, Arr g') -> Arr $ secondV g'
         (f', g') -> f' :***: g' 
 optimiseNoComp (Loop f) = Loop $ optimiseCFSF f
 optimiseNoComp (LoopD f i) = LoopD (optimiseCFSF f) i
