@@ -50,6 +50,7 @@ optimiseCFSF (f :>>>: g) = let
         Just n -> optimiseCFSF n
         Nothing -> f' :>>>: g'
 
+-- Assuming that the two input CFSFs are as optimised as possible, optimise their composition.
 optimiseCFSFPair :: (ValidDesc a, ValidDesc b, ValidDesc c)
     => CFSF a b -> CFSF b c -> Maybe (CFSF a c)
 -- arr f >>> arr g = arr (g.f)

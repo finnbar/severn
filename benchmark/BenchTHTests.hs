@@ -16,7 +16,8 @@ benchTHTests = do
     ld <- benchLoopD
     lm <- benchLoopM
     ldlm <- benchLoopDLoopM
-    let benches = [nl, ld, lm, ldlm]
+    mpl <- benchManyPreLoop
+    let benches = [nl, ld, lm, ldlm, mpl]
     return $ bgroup "THTests" benches
 
 noloop :: IO Benchmark
@@ -30,3 +31,6 @@ benchLoopM = $$(buildBenchmark loopM [50,100,150,200,250,300] "loopM")
 
 benchLoopDLoopM :: IO Benchmark
 benchLoopDLoopM = $$(buildBenchmark loopDloopM [50,100,150,200,250,300] "loopDloopM")
+
+benchManyPreLoop :: IO Benchmark
+benchManyPreLoop = $$(buildBenchmark manyPreLoop [50,100,150,200,250,300] "manyPreLoop")

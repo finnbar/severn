@@ -80,3 +80,25 @@ loopDloopM n =
         (cfsfg, sfg) = prog22 gn
     in ([|| Single $ Loop ((Single Id *** ($$cfsff >>> $$cfsfinner)) >>> $$cfsfg) ||],
         [|| A.loop ((C.id A.*** ($$sff A.>>> $$sfinner)) A.>>> $$sfg) ||])
+
+-- pre v1 >>> arr f1 >>> pre v2 >>> arr f2 >>> ... >>> pre vn >>> arr fn
+preChain :: Quote m => Int ->
+    (Code m (CFSF (P (V Double) (V Double)) (P (V Double) (V Double))),
+    Code m (SF (Double, Double) (Double, Double)))
+preChain 0 = ([|| Single (Id :***: Id) ||], [|| C.id ||])
+preChain 1 = ([|| Single $ Dec (Pre (One 0)) :***: Dec (Pre (One 0)) ||],
+    [|| iPre (0,0) ||])
+preChain 2 =
+    let (cfsfl, sfl) = preChain 1
+    in ([|| $$cfsfl :>>>: Single in2out2nc ||], [|| $$sfl A.>>> in2out2sf ||])
+preChain n =
+    let (cfsfr, sfr) = preChain (n-2)
+        (cfsfl, sfl) = preChain 2
+    in ([|| $$cfsfl :>>>: $$cfsfr ||], [|| $$sfl A.>>> $$sfr ||])
+
+-- loop preChain
+manyPreLoop :: Quote m => Int ->
+    (Code m (CFSF (V Double) (V Double)), Code m (SF Double Double))
+manyPreLoop n =
+    let (cfsf, sf) = preChain n
+    in ([|| Single $ Loop $$cfsf ||], [|| A.loop $$sf ||])
