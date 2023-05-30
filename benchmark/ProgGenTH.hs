@@ -33,49 +33,50 @@ in2out1sf = A.arr $ \(x, y) -> (x + y)
 in2out1nc :: NoComp (P (V Double) (V Double)) (V Double)
 in2out1nc = Arr $ \(Pair (One !x) (One !y)) -> One (x + y)
 
-prog11 :: Quote m => Int -> (Code m (SF Double Double), Code m (CFSF (V Double) (V Double)))
-prog11 1 = ([|| in1out1sf ||], [|| Single in1out1nc ||])
-prog11 2 = ([|| in1out2sf A.>>> in2out1sf ||], [|| Single in1out2nc :>>>: Single in2out1nc ||])
+prog11 :: Quote m => Int -> (Code m (CFSF (V Double) (V Double)), Code m (SF Double Double))
+prog11 1 = ([|| Single in1out1nc ||], [|| in1out1sf ||])
+prog11 2 = ([|| Single in1out2nc :>>>: Single in2out1nc ||], [|| in1out2sf A.>>> in2out1sf ||])
 prog11 n =
-    let (sfprog, cfsfprog) = prog22 (n-2)
-    in ([|| in1out2sf A.>>> $$sfprog A.>>> in2out1sf ||], [|| Single in1out2nc :>>>: $$cfsfprog :>>>: Single in2out1nc ||])
+    let (cfsfprog, sfprog) = prog22 (n-2)
+    in ([|| Single in1out2nc :>>>: $$cfsfprog :>>>: Single in2out1nc ||], [|| in1out2sf A.>>> $$sfprog A.>>> in2out1sf ||])
 
 make :: Quote m => (Code m a, Code m b) -> Code m (a, b)
 make (l, r) = [|| ($$l, $$r) ||]
 
-prog22 :: Quote m => Int -> (Code m (SF (Double, Double) (Double, Double)), Code m (CFSF (P (V Double) (V Double)) (P (V Double) (V Double))))
-prog22 1 = ([|| in2out2sf ||], [|| Single in2out2nc ||])
-prog22 2 = ([|| in2out2sf A.>>> (in1out1sf A.*** in1out1sf) ||], [|| Single in2out2nc :>>>: Single (in1out1nc :***: in1out1nc) ||])
+prog22 :: Quote m => Int ->
+    (Code m (CFSF (P (V Double) (V Double)) (P (V Double) (V Double))), Code m (SF (Double, Double) (Double, Double)))
+prog22 1 = ([|| Single in2out2nc ||], [|| in2out2sf ||])
+prog22 2 = ([|| Single in2out2nc :>>>: Single (in1out1nc :***: in1out1nc) ||], [|| in2out2sf A.>>> (in1out1sf A.*** in1out1sf) ||])
 prog22 n =
-    let (sfl, cfsfl) = prog22 2
-        (sfr, cfsfr) = prog22 (n-2)
-    in ([|| $$sfl A.>>> $$sfr ||], [|| $$cfsfl :>>>: $$cfsfr ||])
+    let (cfsfl, sfl) = prog22 2
+        (cfsfr, sfr) = prog22 (n-2)
+    in ([|| $$cfsfl :>>>: $$cfsfr ||], [|| $$sfl A.>>> $$sfr ||])
 
 -- loop ((id *** f) >>> (id *** pre) >>> g)
-loopD :: Quote m => Int -> (Code m (SF Double Double), Code m (CFSF (V Double) (V Double)))
+loopD :: Quote m => Int -> (Code m (CFSF (V Double) (V Double)), Code m (SF Double Double))
 loopD n =
     let (n1, n2) = bisect n
-        (sff, cfsff) = prog11 n1
-        (sfg, cfsfg) = prog22 n2
-    in ([|| A.loop ((C.id A.*** ($$sff A.>>> iPre 0)) A.>>> $$sfg) ||],
-        [|| Single $ Loop ((Single Id *** ($$cfsff >>> Single (Dec (Pre (One 0))))) >>> $$cfsfg) ||])
+        (cfsff, sff) = prog11 n1
+        (cfsfg, sfg) = prog22 n2
+    in ([|| Single $ Loop ((Single Id *** ($$cfsff >>> Single (Dec (Pre (One 0))))) >>> $$cfsfg) ||],
+        [|| A.loop ((C.id A.*** ($$sff A.>>> iPre 0)) A.>>> $$sfg) ||])
 
 -- loop (f >>> pre >>> g)
-loopM :: Quote m => Int -> (Code m (SF Double Double), Code m (CFSF (V Double) (V Double)))
+loopM :: Quote m => Int -> (Code m (CFSF (V Double) (V Double)), Code m (SF Double Double))
 loopM n =
     let (n1, n2) = bisect n
-        (sff, cfsff) = prog22 n1
-        (sfg, cfsfg) = prog22 n2
-    in ([|| A.loop ($$sff A.>>> iPre (0,0) A.>>> $$sfg) ||],
-        [|| Single $ Loop ($$cfsff :>>>: pre (Pair (One 0) (One 0)) :>>>: $$cfsfg) ||])
+        (cfsff, sff) = prog22 n1
+        (cfsfg, sfg) = prog22 n2
+    in ([|| Single $ Loop ($$cfsff :>>>: pre (Pair (One 0) (One 0)) :>>>: $$cfsfg) ||],
+        [|| A.loop ($$sff A.>>> iPre (0,0) A.>>> $$sfg) ||])
 
 -- loop ((id *** f) >>> (id *** loop (h >>> pre >>> i)) >>> g)
-loopDloopM :: Quote m => Int -> (Code m (SF Double Double), Code m (CFSF (V Double) (V Double)))
+loopDloopM :: Quote m => Int -> (Code m (CFSF (V Double) (V Double)), Code m (SF Double Double))
 loopDloopM n =
     let (fgn, loopn) = bisect n
-        (sfinner, cfsfinner) = loopM loopn
+        (cfsfinner, sfinner) = loopM loopn
         (fn, gn) = bisect fgn
-        (sff, cfsff) = prog11 fn
-        (sfg, cfsfg) = prog22 gn
-    in ([|| A.loop ((C.id A.*** ($$sff A.>>> $$sfinner)) A.>>> $$sfg) ||],
-        [|| Single $ Loop ((Single Id *** ($$cfsff >>> $$cfsfinner)) >>> $$cfsfg) ||])
+        (cfsff, sff) = prog11 fn
+        (cfsfg, sfg) = prog22 gn
+    in ([|| Single $ Loop ((Single Id *** ($$cfsff >>> $$cfsfinner)) >>> $$cfsfg) ||],
+        [|| A.loop ((C.id A.*** ($$sff A.>>> $$sfinner)) A.>>> $$sfg) ||])
