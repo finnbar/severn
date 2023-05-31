@@ -6,8 +6,6 @@ module TestPrograms where
 
 import ProgGenTH
 import CFSF
-import SFRP
-import PreIO
 import Transform
 import Optimise (optimiseCFSF)
 import TestHelpers (Simplify)

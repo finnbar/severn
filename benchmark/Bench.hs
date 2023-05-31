@@ -14,5 +14,5 @@ main :: IO ()
 main = do
     th <- benchTHTests
     rd <- benchRandom
-    let benches = [th, rd]
-    defaultMainWith (defaultConfig {csvFile = Just "tests.csv", confInterval = cl99, timeLimit = 20, verbosity = Verbose}) benches
+    let benches = [th]
+    defaultMainWith (defaultConfig {csvFile = Just "tests-no-timeout.csv", confInterval = cl99, timeLimit = 2000, verbosity = Verbose}) benches

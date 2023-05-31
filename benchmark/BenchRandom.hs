@@ -27,4 +27,4 @@ benchRandom = do
     loop50 <- forM sizes $ \size -> benchThisGenerator (show size) (generateProgram (makeGenParam size 0.5)) inputs
     cPSL "Done generating"
     let !benches = [bgroup "lp=0.1" loop10, bgroup "lp=0.25" loop25, bgroup "lp=0.5" loop50]
-    return $ bgroup "Random benchmarks" benches
+    return $ bgroup "Random" benches

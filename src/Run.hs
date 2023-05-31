@@ -6,16 +6,6 @@ import ArrowCFSF
 
 -- This allows CFSFs to be run (strictly), which we use for testing and benchmarking.
 
--- NOTE This allocates a function at every time step.
--- This is likely part of why LoopD is slow.
--- This is also impossible to avoid without some very complex routing:
--- you need a way to get the output without the input, and then a
--- separate way of getting the continuation using the input. But for a
--- LoopM f d g, you need access to the second output of g (found while
--- getting the output) and use it when taking in the input (since that
--- is the second input of f) - which means either keeping track of
--- whether a given Decoupled has some extra data associated with it, or
--- returning a continuation like we do.
 runDec :: Decoupled a b -> (Val b, Val a -> Decoupled a b)
 runDec (BothDec f g) =
     let (outF, fCont) = runDec f
