@@ -31,7 +31,6 @@ optimiseNoComp :: NoComp a b -> NoComp a b
 optimiseNoComp (f :***: g) =
     case (optimiseNoComp f, optimiseNoComp g) of
         (Arr f', Arr g') -> Arr $ bothV f' g'
-        -- This is a little naive, but it does the job.
         (Arr f', Id) -> Arr $ firstV f'
         (Id, Arr g') -> Arr $ secondV g'
         (f', g') -> f' :***: g' 
