@@ -3,6 +3,7 @@
 module Run where
 
 import ArrowCFSF
+import Transform
 
 -- This allows CFSFs to be run (strictly), which we use for testing and benchmarking.
 
@@ -58,3 +59,13 @@ runCFSF (f :>>>: g) a =
 runCFSF (Single f) a =
     let (b, f') = runNoComp f a
     in (b, Single f')
+
+runCFSFMany :: (ValidDesc a, ValidDesc b) => CFSF a b -> [Val a] -> ([Val b], CFSF a b)
+runCFSFMany cfsf [] = ([], cfsf)
+runCFSFMany cfsf (x : xs) =
+    let (y, cfsf') = runCFSF cfsf x
+        (ys, cfsf'') = runCFSFMany cfsf' xs
+    in (y : ys, cfsf'')
+
+transformAndRun :: (ValidDesc a, ValidDesc b) => CFSF a b -> [Val a] -> ([Val b], CFSF a b)
+transformAndRun cfsf = runCFSFMany (transform cfsf)

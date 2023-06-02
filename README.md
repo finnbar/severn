@@ -3,7 +3,7 @@
 This is the code associated with the paper _This is Driving Me Loopy: Transforming loop in Arrowized Functional Reactive Programs_.
 
 You can run the tests with `stack test` to see that a program behaves the same on random inputs pre- and post-transformation.
-You can also run our benchmarks with `stack build loop-compile:bench:bench-vs-yampa`.
+You can also run our benchmarks with `stack build loop-compile:bench:bench-vs-yampa`. Raw results can be found in `tests.csv` (for the fixed benchmarks) and `tests-random.csv` (for the random benchmarks). The spreadsheet `tests.xlsx` contains the results and speedup calculations.
 
 Here is a quick overview of the files, which may be useful if you're looking through the code.
 This is roughly in dependency order.
@@ -18,4 +18,6 @@ This is roughly in dependency order.
 
 The remaining files in `gen`, and all files in `test` and `benchmark`, are for the tests and benchmarks.
 
-If you would like to try out some example expressions in the REPL, run `stack repl` and import `ArrowCFSF`. This will provide you with the required arrow combinators for building small AFRP programs. You may also want to import `Scratchpad` for some example `CFSF`s.
+If you would like to try out some example expressions in the REPL, run `stack repl`. `ArrowCFSF` provides the required arrow combinators for building small AFRP programs, and `Run` lets you run `CFSF`s strictly via `transformAndRun`. You may also want to use `Scratchpad` for some example `CFSF`s.
+
+Note that `Val` are printed using a special Show instance: `Pair`s are printed as `[|x, y|]` and `One`s are just printed as the value they contain. `CFSF`s are also printed specially, as `Arr` are annotated with their arity - _e.g._ `Arr[P(V)(V)->V]` means that it takes a pair of values to a single one.
