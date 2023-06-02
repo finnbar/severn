@@ -11,8 +11,16 @@ import Statistics.Types (cl99)
 -- stack build loop-compile:bench:bench-vs-yampa
 
 main :: IO ()
-main = do
+main = randomAndTH
+    
+randomAndTH :: IO ()
+randomAndTH = do
     th <- benchTHTests
     rd <- benchRandom
-    let benches = [th]
-    defaultMainWith (defaultConfig {csvFile = Just "tests-no-timeout.csv", confInterval = cl99, timeLimit = 2000, verbosity = Verbose}) benches
+    let benches = [th, rd]
+    defaultMainWith (defaultConfig {csvFile = Just "tests.csv", confInterval = cl99, timeLimit = 20, verbosity = Verbose}) benches
+
+randomOnly :: IO ()
+randomOnly = do
+    rd <- benchRandom
+    defaultMainWith (defaultConfig {csvFile = Just "tests-random.csv", timeLimit = 20}) [rd]
