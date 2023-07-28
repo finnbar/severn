@@ -1,6 +1,6 @@
-# loop-compile
+# Severn
 
-This is the code associated with the paper _This is Driving Me Loopy: Transforming loop in Arrowized Functional Reactive Programs_.
+This is the code associated with the paper _This is Driving Me Loopy: Efficient loops in Arrowized Functional Reactive Programs_. This repository holds a minimal implementation of Severn as of the release of the paper, and will only be updated for bugfixes.
 
 You can run the tests with `stack test` to see that a program behaves the same on random inputs pre- and post-transformation.
 You can also run our benchmarks with `stack build loop-compile:bench:bench-vs-yampa`. Raw results can be found in `tests.csv` (for the fixed benchmarks) and `tests-random.csv` (for the random benchmarks). The spreadsheet `tests.xlsx` contains the results and speedup calculations.

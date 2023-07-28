@@ -4,14 +4,14 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 
-name:           loop-compile
+name:           severn
 version:        0.1.0.0
 description:    Please see the README on GitHub at <https://github.com/githubuser/loop-compile#readme>
-homepage:       https://github.com/githubuser/loop-compile#readme
-bug-reports:    https://github.com/githubuser/loop-compile/issues
-author:         Author name here
-maintainer:     example@example.com
-copyright:      2022 Author name here
+homepage:       https://github.com/finnbar/severn#readme
+bug-reports:    https://github.com/finnbar/severn/issues
+author:         Finnbar Keating
+maintainer:     f.keating@warwick.ac.uk
+copyright:      2023 Finnbar Keating
 license:        BSD3
 license-file:   LICENSE
 build-type:     Simple
@@ -21,7 +21,7 @@ extra-source-files:
 
 source-repository head
   type: git
-  location: https://github.com/githubuser/loop-compile
+  location: https://github.com/finnbar/severn
 
 library
   exposed-modules:
@@ -32,7 +32,7 @@ library
       Scratchpad
       Transform
   other-modules:
-      Paths_loop_compile
+      Paths_severn
   hs-source-dirs:
       src
   default-extensions:
@@ -51,14 +51,14 @@ library
 executable loop-compile-exe
   main-is: Main.hs
   other-modules:
-      Paths_loop_compile
+      Paths_severn
   hs-source-dirs:
       app
   ghc-options: -threaded -rtsopts -with-rtsopts=-N
   build-depends:
       base >=4.7 && <5
     , deepseq
-    , loop-compile
+    , severn
     , template-haskell
   default-language: Haskell2010
 
@@ -72,7 +72,7 @@ test-suite loop-compile-test
       ArrowCFSFGen
       TestHelpers
       TransformGen
-      Paths_loop_compile
+      Paths_severn
   hs-source-dirs:
       test
       gen
@@ -82,7 +82,7 @@ test-suite loop-compile-test
     , base >=4.7 && <5
     , deepseq
     , hedgehog
-    , loop-compile
+    , severn
     , tasty
     , tasty-hedgehog
     , template-haskell
@@ -100,7 +100,7 @@ benchmark bench-vs-yampa
       ArrowCFSFGen
       TestHelpers
       TransformGen
-      Paths_loop_compile
+      Paths_severn
   hs-source-dirs:
       benchmark
       gen
@@ -111,7 +111,7 @@ benchmark bench-vs-yampa
     , criterion
     , deepseq
     , hedgehog
-    , loop-compile
+    , severn
     , statistics
     , template-haskell
   default-language: Haskell2010

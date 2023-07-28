@@ -1,10 +1,10 @@
-name:                loop-compile
+name:                severn 
 version:             0.1.0.0
-github:              "githubuser/loop-compile"
+github:              "finnbar/severn"
 license:             BSD3
-author:              "Author name here"
-maintainer:          "example@example.com"
-copyright:           "2022 Author name here"
+author:              "Finnbar Keating"
+maintainer:          "f.keating@warwick.ac.uk"
+copyright:           "2023 Finnbar Keating"
 
 extra-source-files:
 - README.md
@@ -43,7 +43,7 @@ executables:
     - -rtsopts
     - -with-rtsopts=-N
     dependencies:
-    - loop-compile
+    - severn
 
 tests:
   loop-compile-test:
@@ -56,7 +56,7 @@ tests:
     - -rtsopts
     - -with-rtsopts=-N
     dependencies:
-    - loop-compile
+    - severn
     - hedgehog
     - tasty
     - tasty-hedgehog
@@ -74,7 +74,7 @@ benchmarks:
     - -rtsopts
     - -with-rtsopts=-N
     dependencies:
-    - loop-compile
+    - severn
     - criterion
     - hedgehog
     - Yampa
